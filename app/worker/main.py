@@ -44,6 +44,29 @@ def process_due_surveys(db: Session):
             # send_survey_to_customer already handles its own retry logic
             # and will mark as 'failed' after MAX_RETRIES.
 
+def cleanup_old_images(db: Session):
+    """Delete stored inspection photos older than the configured retention period."""
+    import os
+    from app.config import settings
+    
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=settings.retention_days)
+    old_records = db.query(Inspection).filter(
+        Inspection.image_path.isnot(None),
+        Inspection.created_at < cutoff
+    ).all()
+    
+    for record in old_records:
+        if record.image_path and os.path.exists(record.image_path):
+            try:
+                os.remove(record.image_path)
+                logger.info(f"Deleted old image for record {record.id}: {record.image_path}")
+            except OSError as e:
+                logger.error(f"Failed to delete image {record.image_path}: {e}")
+        record.image_path = None
+    
+    if old_records:
+        db.commit()
+
 def run_worker():
     """Main polling loop. Runs independently and survives server restarts."""
     logger.info("Starting background worker...")
@@ -52,6 +75,7 @@ def run_worker():
         try:
             process_expired_records(db)
             process_due_surveys(db)
+            cleanup_old_images(db)
         except Exception as e:
             logger.error(f"Worker encountered a database error: {e}")
         finally:

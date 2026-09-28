@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     
     retention_days: int = 90
     default_country_code: str = "+52"
+    api_key: str = "changeme"
+    image_storage_path: str = "./uploads"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

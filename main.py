@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.api import webhook
+from app.api import webhook, surveys
 from app.database import engine, Base
 
 # Automatically create DB tables for simplicity (in a real prod app, use alembic)
@@ -12,6 +12,7 @@ app = FastAPI(
 )
 
 app.include_router(webhook.router)
+app.include_router(surveys.router)
 
 @app.get("/health")
 def health_check():
