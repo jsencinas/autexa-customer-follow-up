@@ -33,10 +33,18 @@ class Inspection(Base):
     
     created_at = Column(DateTime, default=utcnow)
     scheduled_at = Column(DateTime, nullable=True)
+    image_path = Column(String, nullable=True)
     
     __table_args__ = (
         Index('ix_duplicate_check', 'customer_name', 'customer_phone', 'service_description', 'date'),
     )
+
+class OptedOutPhone(Base):
+    """Phones that have opted out of receiving messages."""
+    __tablename__ = "opted_out_phones"
+    
+    phone = Column(String, primary_key=True)
+    opted_out_at = Column(DateTime, default=utcnow)
 
 class ProcessedWebhook(Base):
     __tablename__ = "processed_webhooks"

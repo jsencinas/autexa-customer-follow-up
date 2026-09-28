@@ -58,3 +58,39 @@ class WhatsAppClient:
             )
             resp.raise_for_status()
             return resp.json()
+
+    async def send_template_message(
+        self, to_phone: str, template_name: str, language: str, parameters: list[str]
+    ) -> dict:
+        """
+        Sends a pre-approved WhatsApp template message (business-initiated).
+        Parameters are positional: {{1}}, {{2}}, etc.
+        Includes quick reply buttons: Bueno / Regular / Malo.
+        """
+        components = [
+            {
+                "type": "body",
+                "parameters": [{"type": "text", "text": p} for p in parameters]
+            }
+        ]
+
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to_phone.strip("+"),
+            "type": "template",
+            "template": {
+                "name": template_name,
+                "language": {"code": language},
+                "components": components
+            }
+        }
+        
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{self.base_url}/{self.phone_id}/messages",
+                headers=self.headers,
+                json=payload
+            )
+            resp.raise_for_status()
+            return resp.json()
