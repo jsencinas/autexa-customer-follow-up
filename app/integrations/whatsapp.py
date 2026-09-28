@@ -36,3 +36,25 @@ class WhatsAppClient:
             )
             media_resp.raise_for_status()
             return media_resp.content
+
+    async def send_text_message(self, to_phone: str, text: str) -> dict:
+        """
+        Sends a standard text message back to the employee or customer.
+        Meta API expects the phone number without the leading '+'.
+        """
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to_phone.strip("+"),
+            "type": "text",
+            "text": {"body": text}
+        }
+        
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                f"{self.base_url}/{self.phone_id}/messages",
+                headers=self.headers,
+                json=payload
+            )
+            resp.raise_for_status()
+            return resp.json()
