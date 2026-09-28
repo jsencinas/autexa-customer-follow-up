@@ -78,8 +78,12 @@ async def handle_employee_text(employee_phone: str, text: str):
         text_upper = text.strip().upper()
         
         if text_upper == "OK":
+            from datetime import datetime, timezone
+            from app.services.scheduler import calculate_schedule_time
+            
             # Confirm and schedule
             pending.status = RecordStatus.scheduled
+            pending.scheduled_at = calculate_schedule_time(datetime.now(timezone.utc).replace(tzinfo=None))
             db.commit()
             
             await wa.send_text_message(
