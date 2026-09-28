@@ -18,6 +18,7 @@ class Inspection(Base):
     __tablename__ = "inspections"
 
     id = Column(Integer, primary_key=True, index=True)
+    employee_phone = Column(String, index=True, nullable=True)
     
     customer_name = Column(String, index=True, nullable=True)
     customer_phone = Column(String, index=True, nullable=True)

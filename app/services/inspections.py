@@ -7,7 +7,7 @@ from app.services.utils import normalize_phone_number
 
 logger = logging.getLogger(__name__)
 
-def check_and_create_inspection(db: Session, data: ExtractedData) -> tuple[bool, Inspection]:
+def check_and_create_inspection(db: Session, data: ExtractedData, employee_phone: str) -> tuple[bool, Inspection]:
     """
     Evaluates extraction results for duplicates against active inspections.
     Returns a tuple (is_duplicate, record).
@@ -42,6 +42,7 @@ def check_and_create_inspection(db: Session, data: ExtractedData) -> tuple[bool,
             
         # 3. Create if unique
         new_record = Inspection(
+            employee_phone=employee_phone,
             customer_name=data.customer_name.strip() if data.customer_name else None,
             customer_phone=norm_phone,
             service_description=data.service_description.strip() if data.service_description else None,

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, Response, Query, Depends, HTTPException
+from fastapi import APIRouter, Request, Response, Query, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.config import settings
@@ -19,8 +19,10 @@ def verify_webhook(
         return Response(content=hub_challenge, media_type="text/plain")
     raise HTTPException(status_code=403, detail="Verification failed")
 
+from app.services.flow import handle_employee_image, handle_employee_text
+
 @router.post("", dependencies=[Depends(verify_whatsapp_signature)])
-async def receive_webhook(request: Request, db: Session = Depends(get_db)):
+async def receive_webhook(request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     payload = await request.json()
     try:
         entries = payload.get("entry", [])
@@ -47,7 +49,18 @@ async def receive_webhook(request: Request, db: Session = Depends(get_db)):
                         if normalized_from not in settings.employee_phone_list:
                             continue
                             
-                    logger.info(f"Received valid message {msg_id} from {from_number}")
+                        # Route to background tasks based on message type
+                        msg_type = msg.get("type")
+                        if msg_type == "image":
+                            media_id = msg.get("image", {}).get("id")
+                            if media_id:
+                                background_tasks.add_task(handle_employee_image, normalized_from, media_id)
+                        elif msg_type == "text":
+                            text_body = msg.get("text", {}).get("body", "")
+                            if text_body:
+                                background_tasks.add_task(handle_employee_text, normalized_from, text_body)
+                                
+                        logger.info(f"Routed valid {msg_type} message from {normalized_from} to background tasks.")
                     
     except Exception as e:
         logger.error(f"Error processing webhook payload: {e}")

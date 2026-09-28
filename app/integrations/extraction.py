@@ -58,3 +58,40 @@ class ExtractionClient:
                 # Return an empty schema so the flow continues,
                 # letting the employee manually input the data later.
                 return ExtractedData()
+
+    async def apply_correction(self, existing_data: ExtractedData, correction_text: str) -> ExtractedData:
+        """
+        Uses the LLM to apply a plain text correction to the existing JSON data.
+        """
+        prompt = (
+            f"Here is the current JSON data: {existing_data.model_dump_json()}\n"
+            f"The user sent this correction: '{correction_text}'\n"
+            "Return EXACTLY the updated JSON object, preserving unchanged fields. "
+            "Do not include any markdown formatting."
+        )
+        
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "stream": False,
+            "format": "json"
+        }
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                response = await client.post(
+                    f"{self.ollama_url}/api/generate",
+                    json=payload
+                )
+                response.raise_for_status()
+                
+                result_text = response.json().get("response", "{}")
+                if result_text.startswith("```json"):
+                    result_text = result_text.replace("```json", "").replace("```", "").strip()
+                    
+                data = json.loads(result_text)
+                return ExtractedData(**data)
+                
+            except Exception as e:
+                logger.error(f"Failed to apply correction: {e}")
+                return existing_data
