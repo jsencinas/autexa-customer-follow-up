@@ -157,6 +157,21 @@ class ContactActivity(Base):
     last_employee_message_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
 
 
+class EmployeeMessage(Base):
+    """A message an employee sent by hand from the Business app (from `smb_message_echoes`).
+
+    Only the timestamp is kept: it tells the bot that a human joined the conversation.
+    """
+
+    __tablename__ = "employee_messages"
+    __table_args__ = (Index("ix_employee_messages_phone_sent", "phone", "sent_at"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    wa_message_id: Mapped[str] = mapped_column(String(128), unique=True)
+    phone: Mapped[str] = mapped_column(String(20))
+    sent_at: Mapped[datetime] = mapped_column(UTCDateTime)
+
+
 class OptOut(Base):
     """A number that must never receive bot messages again. Never removed by retention."""
 
@@ -220,6 +235,7 @@ class MonthlyReport(Base):
 __all__ = [
     "AuditLog",
     "ContactActivity",
+    "EmployeeMessage",
     "InboundMessage",
     "Inspection",
     "LoginAttempt",

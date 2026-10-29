@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.config import Settings, get_settings
+from app.api import webhook
 from app.db import init_db
 from app.logging_utils import configure_logging
 from app.web import admin_routes, auth_routes, inspection_routes
@@ -47,6 +48,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def index() -> RedirectResponse:
         return RedirectResponse("/inspections/new", status_code=303)
 
+    app.include_router(webhook.router)
     app.include_router(auth_routes.router)
     app.include_router(admin_routes.router)
     app.include_router(inspection_routes.router)
