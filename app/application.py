@@ -51,5 +51,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(webhook.router)
     app.include_router(auth_routes.router)
     app.include_router(admin_routes.router)
+    app.include_router(admin_routes.results_router)
     app.include_router(inspection_routes.router)
     return app

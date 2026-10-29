@@ -39,3 +39,13 @@ th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--bord
 .photo img { width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--border); }
 .inline { display: inline; }
 .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #e8edf3; font-size: .85rem; }
+.tiles { display: grid; gap: 12px; grid-template-columns: repeat(2, 1fr); }
+@media (min-width: 760px) { .tiles { grid-template-columns: repeat(4, 1fr); } }
+.tile { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.tile .value { font-size: 1.8rem; font-weight: 700; line-height: 1.1; }
+.tile .label { color: var(--muted); font-size: .9rem; }
+.filters { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; }
+.filters label { margin: 0 0 4px; font-size: .85rem; }
+.filters > div { flex: 1 1 140px; }
+.chart-box { position: relative; height: 260px; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }

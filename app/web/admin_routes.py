@@ -1,6 +1,10 @@
 """Admin section routes (admin role only)."""
 
-from fastapi import APIRouter, Depends, Form, Request
+from datetime import date
+from typing import Any
+from zoneinfo import ZoneInfo
+
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
@@ -8,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from app.db import get_db
 from app.models.enums import OptOutSource, Rating, Role
-from app.services import admin_settings, auth, opt_out, review
+from app.services import admin_settings, auth, opt_out, review, stats
 from app.services.messages import Messages
 from app.services.normalization import normalize_phone
 from app.services.surveys import MessageSender
@@ -229,3 +233,87 @@ def remove_opt_out(
         ctx = {"items": opt_out.list_all(db), "error": str(exc)}
         return render(request, "admin/opt_outs.html", ctx, user=user, status_code=400)
     return RedirectResponse("/admin/opt-outs", status_code=303)
+
+
+# --- Dashboard and results ------------------------------------------------------
+
+results_router = APIRouter()
+
+
+def _parse_date(value: str | None) -> date | None:
+    try:
+        return date.fromisoformat(value) if value else None
+    except ValueError:
+        raise HTTPException(400, "Fecha no válida (AAAA-MM-DD)") from None
+
+
+def _filters(
+    date_from: str | None = None,
+    date_to: str | None = None,
+    service: str | None = None,
+    rating: str | None = None,
+) -> stats.SurveyFilter:
+    """Query-string filters; empty values (as sent by the filter form) mean "no filter"."""
+    if rating and rating not in {r.value for r in Rating}:
+        raise HTTPException(400, "Valoración no válida (good, okay, bad)")
+    return stats.SurveyFilter(
+        date_from=_parse_date(date_from),
+        date_to=_parse_date(date_to),
+        service=(service or "").strip() or None,
+        rating=Rating(rating) if rating else None,
+    )
+
+
+def _tz(db: Session, settings: Settings) -> ZoneInfo:
+    return admin_settings.get_sending_hours(db, settings).tz
+
+
+@router.get("", response_class=HTMLResponse)
+def dashboard(
+    request: Request,
+    f: stats.SurveyFilter = Depends(_filters),
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> HTMLResponse:
+    """Dashboard page; charts load from /admin/api/stats and refresh every 30 seconds."""
+    data = stats.compute_stats(db, f, _tz(db, settings))
+    return render(request, "admin/dashboard.html", {"filters": f, "stats": data}, user=user)
+
+
+@router.get("/api/stats")
+def stats_api(
+    f: stats.SurveyFilter = Depends(_filters),
+    _user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """JSON statistics polled by the dashboard."""
+    return stats.compute_stats(db, f, _tz(db, settings))
+
+
+@results_router.get("/surveys")
+def list_surveys(
+    f: stats.SurveyFilter = Depends(_filters),
+    _user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> list[dict[str, Any]]:
+    """Sent surveys and their answers, filterable by date and rating (admin only)."""
+    return stats.survey_rows(db, f, _tz(db, settings))
+
+
+@results_router.get("/surveys.csv")
+def export_surveys(
+    f: stats.SurveyFilter = Depends(_filters),
+    _user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    """CSV export of the same rows."""
+    body = stats.to_csv(stats.survey_rows(db, f, _tz(db, settings)))
+    return Response(
+        body,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="encuestas.csv"'},
+    )

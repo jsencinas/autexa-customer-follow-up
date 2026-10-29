@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% block title %}Panel de encuestas{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Panel de encuestas</h1>
+  <form class="filters" method="get" action="/admin" id="filters">
+    <div><label for="date_from">Desde</label><input id="date_from" name="date_from" type="date" value="{{ filters.date_from or '' }}"></div>
+    <div><label for="date_to">Hasta</label><input id="date_to" name="date_to" type="date" value="{{ filters.date_to or '' }}"></div>
+    <div><label for="service">Servicio</label><input id="service" name="service" type="text" value="{{ filters.service or '' }}"></div>
+    <div><button type="submit">Filtrar</button></div>
+  </form>
+  <p class="muted" style="margin-top:10px">
+    Se actualiza cada 30 segundos · <span id="updated">actualizado ahora</span> ·
+    <a id="csv-link" href="/surveys.csv">Descargar CSV</a>
+  </p>
+</div>
+
+<div class="tiles" style="margin-bottom:16px">
+  <div class="tile"><div class="value" id="t-sent">{{ stats.sent }}</div><div class="label">Encuestas enviadas</div></div>
+  <div class="tile"><div class="value" id="t-answered">{{ stats.answered }}</div><div class="label">Respondidas</div></div>
+  <div class="tile"><div class="value" id="t-rate">{{ "%.0f" | format(stats.response_rate * 100) }} %</div><div class="label">Tasa de respuesta</div></div>
+  <div class="tile"><div class="value" id="t-review">{{ stats.pending_review }}</div><div class="label"><a href="/admin/review">Por revisar</a></div></div>
+</div>
+
+<div class="grid two">
+  <div class="card">
+    <h2>Valoraciones</h2>
+    <div class="chart-box"><canvas id="c-dist" aria-label="Distribución de valoraciones" role="img"></canvas></div>
+    <table id="dist-table" style="margin-top:10px">
+      <tr><th>Valoración</th><th>Respuestas</th></tr>
+      {% for key, label in (("good", "Bien"), ("okay", "Regular"), ("bad", "Mal")) %}
+      <tr><td><span class="swatch" data-rating="{{ key }}"></span>{{ label }}</td><td data-count="{{ key }}">{{ stats.distribution[key] }}</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+  <div class="card">
+    <h2>Valoraciones por semana</h2>
+    <div class="chart-box"><canvas id="c-weekly" aria-label="Valoraciones por semana" role="img"></canvas></div>
+  </div>
+</div>
+<div class="card">
+  <h2>Valoraciones por servicio</h2>
+  <div class="chart-box"><canvas id="c-service" aria-label="Valoraciones por servicio" role="img"></canvas></div>
+</div>
+<div class="card">
+  <h2>Últimos comentarios</h2>
+  <div class="table-wrap">
+  <table id="comments">
+    {% for c in stats.comments %}
+    <tr><td class="muted">{{ c.date }}</td><td>{{ c.rating | rating_label }}</td><td>{{ c.service }}</td><td>{{ c.comment }}</td></tr>
+    {% else %}
+    <tr><td class="muted">Todavía no hay comentarios.</td></tr>
+    {% endfor %}
+  </table>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/vendor/chart.umd.min.js"></script>
+<script>
+(function () {
+  // Status colours (good / warning / critical). Identity is never colour-only: legend, labels and table.
+  var COLORS = { good: "#0ca30c", okay: "#fab219", bad: "#d03b3b" };
+  var LABELS = { good: "Bien", okay: "Regular", bad: "Mal" };
+  var KEYS = ["good", "okay", "bad"];
+  var SURFACE = "#ffffff", GRID = "#e1e0d9", AXIS = "#c3c2b7", TEXT = "#52514e";
+  Chart.defaults.color = TEXT;
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  document.querySelectorAll(".swatch").forEach(function (el) { el.style.background = COLORS[el.dataset.rating]; });
+
+  var initial = {{ stats | tojson }};
+  var axes = function (stacked, horizontal) {
+    var value = { stacked: stacked, beginAtZero: true, ticks: { precision: 0 }, grid: { color: GRID }, border: { color: AXIS } };
+    var cat = { stacked: stacked, grid: { display: false }, border: { color: AXIS } };
+    return horizontal ? { x: value, y: cat } : { x: cat, y: value };
+  };
+  var barSets = function (rows) {
+    return KEYS.map(function (k) {
+      return { label: LABELS[k], data: rows.map(function (r) { return r[k]; }), backgroundColor: COLORS[k],
+               borderColor: SURFACE, borderWidth: 2, borderRadius: 4, borderSkipped: false, maxBarThickness: 28 };
+    });
+  };
+  var common = { responsive: true, maintainAspectRatio: false, animation: false,
+                 interaction: { mode: "index", intersect: false },
+                 plugins: { legend: { position: "bottom", labels: { boxWidth: 10, boxHeight: 10 } } } };
+
+  var dist = new Chart(document.getElementById("c-dist"), {
+    type: "doughnut",
+    data: { labels: KEYS.map(function (k) { return LABELS[k]; }),
+            datasets: [{ data: KEYS.map(function (k) { return initial.distribution[k]; }),
+                         backgroundColor: KEYS.map(function (k) { return COLORS[k]; }), borderColor: SURFACE, borderWidth: 2 }] },
+    options: Object.assign({}, common, { cutout: "62%", interaction: { mode: "nearest", intersect: true } })
+  });
+  var weekly = new Chart(document.getElementById("c-weekly"), {
+    type: "bar",
+    data: { labels: initial.weekly.map(function (w) { return w.week; }), datasets: barSets(initial.weekly) },
+    options: Object.assign({}, common, { scales: axes(true, false) })
+  });
+  var service = new Chart(document.getElementById("c-service"), {
+    type: "bar",
+    data: { labels: initial.by_service.map(function (s) { return s.service; }), datasets: barSets(initial.by_service) },
+    options: Object.assign({}, common, { indexAxis: "y", scales: axes(true, true) })
+  });
+
+  function render(s) {
+    document.getElementById("t-sent").textContent = s.sent;
+    document.getElementById("t-answered").textContent = s.answered;
+    document.getElementById("t-rate").textContent = Math.round(s.response_rate * 100) + " %";
+    document.getElementById("t-review").textContent = s.pending_review;
+    KEYS.forEach(function (k) { document.querySelector('[data-count="' + k + '"]').textContent = s.distribution[k]; });
+    dist.data.datasets[0].data = KEYS.map(function (k) { return s.distribution[k]; });
+    weekly.data.labels = s.weekly.map(function (w) { return w.week; });
+    weekly.data.datasets = barSets(s.weekly);
+    service.data.labels = s.by_service.map(function (r) { return r.service; });
+    service.data.datasets = barSets(s.by_service);
+    [dist, weekly, service].forEach(function (c) { c.update(); });
+    var table = document.getElementById("comments");
+    table.innerHTML = "";
+    if (!s.comments.length) { table.insertRow().insertCell().textContent = "Todavía no hay comentarios."; }
+    s.comments.forEach(function (c) {
+      var row = table.insertRow();
+      [c.date, LABELS[c.rating] || "—", c.service, c.comment].forEach(function (v) { row.insertCell().textContent = v; });
+    });
+    document.getElementById("updated").textContent = "actualizado " + new Date().toLocaleTimeString();
+  }
+
+  var query = new URLSearchParams(new FormData(document.getElementById("filters")));
+  Array.from(query.keys()).forEach(function (k) { if (!query.get(k)) query.delete(k); });
+  document.getElementById("csv-link").href = "/surveys.csv?" + query.toString();
+  setInterval(function () {
+    fetch("/admin/api/stats?" + query.toString(), { credentials: "same-origin" })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(render)
+      .catch(function () { document.getElementById("updated").textContent = "sin conexión, reintentando…"; });
+  }, 30000);
+})();
+</script>
+{% endblock %}
