@@ -57,3 +57,21 @@ def scheduled_inspection(db: Session, scheduled_at, phone: str = "+34612345678",
     db.add(inspection)
     db.commit()
     return inspection
+
+
+@dataclass
+class FakeInterpreter:
+    """Returns canned LLM interpretations and records what it was asked."""
+
+    results: list[object] = field(default_factory=list)
+    calls: list[tuple[str, str]] = field(default_factory=list)
+    model: str = "fake-llm"
+
+    def interpret(self, bot_message: str, customer_reply: str):  # type: ignore[no-untyped-def]
+        from app.integrations.llm_client import LlmInterpretation
+
+        self.calls.append((bot_message, customer_reply))
+        item = self.results.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return LlmInterpretation.model_validate(item)

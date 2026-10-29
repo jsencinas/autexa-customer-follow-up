@@ -9,9 +9,10 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
-from app.services import extraction, inspections, scheduler
+from app.services import extraction, inspections, reply_interpretation, scheduler
 from app.services.extraction import Extractor
 from app.services.messages import Messages
+from app.services.reply_interpretation import ReplyInterpreter
 from app.services.scheduler import SendOutcome
 from app.services.surveys import MessageSender
 from app.timeutils import utcnow
@@ -31,6 +32,7 @@ class WorkerDeps:
     messages: Messages
     sender: MessageSender
     extractor: Extractor
+    interpreter: ReplyInterpreter
     sleep: Callable[[float], None] = time_module.sleep
 
 
@@ -60,6 +62,7 @@ class Worker:
         """Run every job that is due at `now`."""
         now = now or utcnow()
         self._job("extraction", self.run_extractions, now)
+        self._job("replies", self.interpret_replies, now)
         if self._due("surveys", SURVEY_INTERVAL, now):
             self._job("recover_sends", self.recover_sends, now)
             self._job("surveys", self.send_due_surveys, now)
@@ -76,6 +79,17 @@ class Worker:
             except Exception:
                 db.rollback()
                 logger.exception("extraction of inspection %s crashed", inspection_id)
+
+    def interpret_replies(self, db: Session, now: datetime) -> None:
+        """Interpret stored customer messages."""
+        for message_id in reply_interpretation.claim_due_messages(db, now):
+            try:
+                reply_interpretation.process_message(
+                    db, message_id, self.deps.interpreter, self.deps.sender, self.deps.messages, self.deps.settings, now
+                )
+            except Exception:
+                db.rollback()
+                logger.exception("interpreting message %s crashed", message_id)
 
     def send_due_surveys(self, db: Session, now: datetime) -> None:
         """Send due surveys, respecting the configured send rate."""

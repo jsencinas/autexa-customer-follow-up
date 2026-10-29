@@ -3,6 +3,7 @@
 from app.config import get_settings
 from app.db import init_db
 from app.integrations.extraction_client import ExtractionClient
+from app.integrations.llm_client import ReplyInterpreterClient
 from app.integrations.ollama import OllamaClient
 from app.integrations.whatsapp import WhatsAppClient
 from app.logging_utils import configure_logging
@@ -26,6 +27,7 @@ def main() -> None:
             settings.whatsapp_api_base_url,
         ),
         extractor=ExtractionClient(ollama, settings.extraction_model),
+        interpreter=ReplyInterpreterClient(ollama, settings.reply_model),
     )
     Worker(deps).run_forever()
 
