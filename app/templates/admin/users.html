@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Usuarios{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Usuarios</h1>
+  <div class="table-wrap">
+  <table>
+    <tr><th>Usuario</th><th>Rol</th><th>Estado</th><th></th></tr>
+    {% for u in users %}
+    <tr>
+      <td>{{ u.username }}</td>
+      <td>{{ "Administrador" if u.role == "admin" else "Empleado" }}</td>
+      <td>{{ "Activo" if u.is_active else "Desactivado" }}</td>
+      <td>
+        {% if u.id != user.id %}
+        <form class="inline" method="post" action="/admin/users/{{ u.id }}/active">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="active" value="{{ 'false' if u.is_active else 'true' }}">
+          <button type="submit">{{ "Desactivar" if u.is_active else "Activar" }}</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+</div>
+<div class="card">
+  <h2>Crear usuario</h2>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <form method="post" action="/admin/users">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="username">Usuario</label>
+    <input id="username" name="username" type="text" autocapitalize="none" required>
+    <label for="password">Contraseña (mínimo 8 caracteres)</label>
+    <input id="password" name="password" type="password" autocomplete="new-password" required>
+    <label for="role">Rol</label>
+    <select id="role" name="role">
+      <option value="employee">Empleado</option>
+      <option value="admin">Administrador</option>
+    </select>
+    <button class="primary" type="submit">Crear</button>
+  </form>
+</div>
+{% endblock %}

@@ -51,3 +51,71 @@ def _clear_settings_cache() -> Iterator[None]:
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
+
+
+import re  # noqa: E402
+
+from fastapi.testclient import TestClient  # noqa: E402
+
+from app.models.enums import Role  # noqa: E402
+from app.services import auth  # noqa: E402
+
+PASSWORD = "correct-horse-1"
+
+
+def csrf_from(html: str) -> str:
+    """Extract the CSRF token from a rendered page."""
+    match = re.search(r'name="csrf_token" value="([^"]+)"', html)
+    assert match, "no csrf token in page"
+    return match.group(1)
+
+
+def login(client: TestClient, username: str, password: str = PASSWORD) -> None:
+    """Log a test client in through the real login form."""
+    token = csrf_from(client.get("/login").text)
+    response = client.post(
+        "/login", data={"username": username, "password": password, "csrf_token": token}, follow_redirects=False
+    )
+    assert response.status_code == 303, response.text
+
+
+@pytest.fixture
+def app(settings: Settings):  # type: ignore[no-untyped-def]
+    """The FastAPI app wired to the test settings."""
+    from app.application import create_app
+
+    return create_app(settings)
+
+
+@pytest.fixture
+def client(app) -> TestClient:  # type: ignore[no-untyped-def]
+    """An anonymous test client."""
+    return TestClient(app)
+
+
+@pytest.fixture
+def employee(app, db: Session):  # type: ignore[no-untyped-def]
+    """An employee account."""
+    return auth.create_user(db, "empleado", PASSWORD, Role.EMPLOYEE)
+
+
+@pytest.fixture
+def admin_user(app, db: Session):  # type: ignore[no-untyped-def]
+    """An admin account."""
+    return auth.create_user(db, "jefe", PASSWORD, Role.ADMIN)
+
+
+@pytest.fixture
+def employee_client(app, employee) -> TestClient:  # type: ignore[no-untyped-def]
+    """A client logged in as an employee."""
+    c = TestClient(app)
+    login(c, employee.username)
+    return c
+
+
+@pytest.fixture
+def admin_client(app, admin_user) -> TestClient:  # type: ignore[no-untyped-def]
+    """A client logged in as an admin."""
+    c = TestClient(app)
+    login(c, admin_user.username)
+    return c

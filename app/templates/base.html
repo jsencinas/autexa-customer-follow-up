@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Seguimiento de clientes{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  {% block head %}{% endblock %}
+</head>
+<body>
+{% if user %}
+<header>
+  <nav>
+    <a href="/inspections/new">Nueva inspección</a>
+    <a href="/inspections?status=pending_confirmation">Pendientes</a>
+    {% if user.is_admin %}
+    <a href="/admin">Panel</a>
+    <a href="/admin/review">Revisión</a>
+    <a href="/admin/settings">Ajustes</a>
+    <a href="/admin/opt-outs">Bajas</a>
+    <a href="/admin/users">Usuarios</a>
+    {% endif %}
+    <span class="spacer"></span>
+    <span class="muted">{{ user.username }}</span>
+    <form class="inline" method="post" action="/logout">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="link" type="submit">Salir</button>
+    </form>
+  </nav>
+</header>
+{% endif %}
+<main>
+{% block content %}{% endblock %}
+</main>
+{% block scripts %}{% endblock %}
+</body>
+</html>
