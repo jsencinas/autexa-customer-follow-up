@@ -81,6 +81,7 @@ class Inspection(Base):
     service_display: Mapped[str | None] = mapped_column(String(60))
     service_date: Mapped[date | None] = mapped_column(Date)
     extra_fields: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    edited_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
 
     # Duplicate detection: set only while the record is active and complete; unique in the DB.
     dedup_key: Mapped[str | None] = mapped_column(String(64), unique=True)

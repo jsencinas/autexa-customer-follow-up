@@ -61,6 +61,7 @@ class Settings(BaseSettings):
     send_rate_per_second: float = 1.0
     max_send_attempts: int = 5
     max_extraction_attempts: int = 3
+    extraction_retry_base_seconds: int = 5
     max_interpretation_attempts: int = 5
     max_report_attempts: int = 5
     retry_base_seconds: int = 60
