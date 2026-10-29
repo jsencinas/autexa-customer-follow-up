@@ -11,7 +11,7 @@
       <td><a href="/inspections/{{ i.id }}/confirm">#{{ i.id }}</a></td>
       <td>{{ i.customer_name or "—" }}</td>
       <td>{{ i.service_display or i.service_description or "—" }}</td>
-      <td><span class="badge">{{ i.status }}</span></td>
+      <td><span class="badge">{{ i.status | status_label }}</span></td>
       <td class="muted">{{ i.created_at.strftime("%d/%m %H:%M") }} UTC</td>
     </tr>
     {% endfor %}

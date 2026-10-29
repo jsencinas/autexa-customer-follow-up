@@ -1,13 +1,14 @@
 """Employee pages: upload a photo, review and confirm the extracted data."""
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.db import get_db
+from app.models.db_models import Inspection
 from app.models.enums import InspectionStatus
-from app.services import inspections
+from app.services import confirmation, inspections, opt_out
 from app.services.storage import InvalidImage
 from app.web.security import CurrentUser, current_user, verify_csrf
 from app.web.templating import render
@@ -75,19 +76,92 @@ def image(
     return FileResponse(path, media_type=storage.media_type(inspection.image_path))
 
 
+def _review_context(
+    db: Session, inspection: Inspection, manual: bool = False, **extra: object
+) -> dict[str, object]:
+    duplicate_of = db.get(Inspection, inspection.duplicate_of_id) if inspection.duplicate_of_id else None
+    return {
+        "inspection": inspection,
+        "manual": manual,
+        "duplicate_of": duplicate_of,
+        "opted_out": opt_out.is_opted_out(db, inspection.customer_phone),
+        "errors": {},
+        **extra,
+    }
+
+
+def _load(db: Session, inspection_id: int) -> Inspection:
+    try:
+        return inspections.get_inspection(db, inspection_id)
+    except inspections.InspectionNotFound:
+        raise HTTPException(404) from None
+
+
 @router.get("/{inspection_id}/confirm", response_class=HTMLResponse)
 def confirm_page(
     request: Request,
     inspection_id: int,
+    manual: bool = False,
     user: CurrentUser = Depends(current_user),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
-    """Review page; shows a processing notice until extraction finishes."""
+    """Review page: processing notice, unreadable/failed fallbacks, or the editable form."""
+    inspection = _load(db, inspection_id)
+    return render(request, "inspections/confirm.html", _review_context(db, inspection, manual), user=user)
+
+
+@router.post("/{inspection_id}/confirm", dependencies=[Depends(verify_csrf)], response_model=None)
+def confirm(
+    request: Request,
+    inspection_id: int,
+    action: str = Form("confirm"),
+    customer_name: str = Form(""),
+    customer_phone: str = Form(""),
+    service_description: str = Form(""),
+    service_display: str = Form(""),
+    service_date: str = Form(""),
+    user: CurrentUser = Depends(current_user),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> HTMLResponse | RedirectResponse:
+    """Save corrections (action=save) or save and confirm (action=confirm)."""
+    _load(db, inspection_id)
+    form = confirmation.ReviewForm(
+        customer_name=customer_name,
+        customer_phone=customer_phone,
+        service_description=service_description,
+        service_display=service_display,
+        service_date=service_date,
+    )
     try:
-        inspection = inspections.get_inspection(db, inspection_id)
-    except inspections.InspectionNotFound:
-        raise HTTPException(404) from None
-    return render(request, "inspections/confirm.html", {"inspection": inspection}, user=user)
+        if action == "save":
+            result = confirmation.save_edits(db, inspection_id, form, settings)
+        else:
+            result = confirmation.confirm(db, inspection_id, form, settings, user.id)
+    except inspections.InvalidTransition as exc:
+        ctx = _review_context(db, _load(db, inspection_id), error=str(exc))
+        return render(request, "inspections/confirm.html", ctx, user=user, status_code=409)
+    if result.errors and result.duplicate_of is None:
+        ctx = _review_context(db, result.inspection, manual=True, errors=result.errors)
+        return render(request, "inspections/confirm.html", ctx, user=user, status_code=400)
+    return RedirectResponse(f"/inspections/{inspection_id}/confirm", status_code=303)
+
+
+@router.post("/{inspection_id}/discard", dependencies=[Depends(verify_csrf)], response_model=None)
+def discard(
+    request: Request,
+    inspection_id: int,
+    user: CurrentUser = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> HTMLResponse | RedirectResponse:
+    """Discard a pending inspection."""
+    _load(db, inspection_id)
+    try:
+        confirmation.discard(db, inspection_id)
+    except inspections.InvalidTransition as exc:
+        ctx = _review_context(db, _load(db, inspection_id), error=str(exc))
+        return render(request, "inspections/confirm.html", ctx, user=user, status_code=409)
+    return RedirectResponse(f"/inspections/{inspection_id}/confirm", status_code=303)
 
 
 @router.post("/{inspection_id}/retake", dependencies=[Depends(verify_csrf)], response_model=None)
@@ -105,7 +179,6 @@ def retake(
     except inspections.InspectionNotFound:
         raise HTTPException(404) from None
     except (InvalidImage, inspections.InvalidTransition) as exc:
-        current = inspections.get_inspection(db, inspection_id)
-        ctx = {"inspection": current, "error": str(exc)}
+        ctx = _review_context(db, _load(db, inspection_id), error=str(exc))
         return render(request, "inspections/confirm.html", ctx, user=user, status_code=400)
     return RedirectResponse(f"/inspections/{inspection.id}/confirm", status_code=303)

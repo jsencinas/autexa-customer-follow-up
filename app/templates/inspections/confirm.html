@@ -1,14 +1,129 @@
 {% extends "base.html" %}
-{% block title %}Inspección #{{ inspection.id }}{% endblock %}
+{% set i = inspection %}
+{% set processing = i.extraction_status in ("pending", "processing") %}
+{% set editable = i.status == "pending_confirmation" and (not processing or manual or errors) %}
+{% block title %}Inspección #{{ i.id }}{% endblock %}
 {% block head %}
-{% if inspection.extraction_status in ("pending", "processing") %}<meta http-equiv="refresh" content="3">{% endif %}
+{% if processing and i.status == "pending_confirmation" and not manual %}<meta http-equiv="refresh" content="3">{% endif %}
 {% endblock %}
+{% macro field_class(name) -%}
+{%- if errors.get(name) or (i.field_confidence or {}).get(name) == "invalid" %}field-error
+{%- elif (i.field_confidence or {}).get(name) in ("low", "missing") %}field-warn{% endif -%}
+{%- endmacro %}
 {% block content %}
 <div class="card">
-  <h1>Inspección #{{ inspection.id }}</h1>
+  <h1>Inspección #{{ i.id }} <span class="badge">{{ i.status | status_label }}</span></h1>
   {% if error %}<p class="error">{{ error }}</p>{% endif %}
-  {% if inspection.extraction_status in ("pending", "processing") %}
-  <p>Leyendo la foto… esta página se actualiza sola.</p>
+
+  {% if duplicate_of %}
+    <div class="notice">
+      Esta inspección ya estaba registrada:
+      <a href="/inspections/{{ duplicate_of.id }}/confirm">#{{ duplicate_of.id }}</a>
+      (estado: <strong>{{ duplicate_of.status | status_label }}</strong>). No se ha creado ni programado nada nuevo.
+    </div>
+  {% elif i.status == "pending_confirmation" and processing and not manual %}
+    <p>Leyendo la foto… esta página se actualiza sola.</p>
+    <a class="button" href="/inspections/{{ i.id }}/confirm?manual=1">Introducir los datos a mano</a>
+  {% elif i.status == "pending_confirmation" and i.extraction_status == "unreadable" %}
+    <div class="notice">
+      <strong>No hemos podido leer esta foto.</strong>
+      Consejos: hoja completa dentro de la foto, buena luz, sin sombras ni reflejos, móvil paralelo a la hoja.
+      Puedes repetir la foto o escribir los datos a mano abajo.
+    </div>
+  {% elif i.status == "pending_confirmation" and i.extraction_status == "failed" and not i.edited_at %}
+    <div class="notice">No se ha podido leer la foto automáticamente. Introduce los datos a mano.</div>
+  {% elif i.status == "pending_confirmation" %}
+    <p class="muted">Revisa los datos. Los campos marcados en amarillo no se leyeron con seguridad; los rojos no son válidos.</p>
+  {% elif i.status == "scheduled" %}
+    <p class="ok">Confirmada. Encuesta programada.</p>
+  {% elif i.status == "opted_out" %}
+    <div class="notice">Este cliente se dio de baja de los mensajes automáticos. No se enviará encuesta.</div>
+  {% endif %}
+
+  {% if opted_out and i.status == "pending_confirmation" %}
+    <div class="notice">Este cliente se dio de baja: no se le enviará la encuesta.</div>
   {% endif %}
 </div>
+
+<div class="grid two">
+  {% if i.image_path %}
+  <div class="card photo">
+    <a href="/inspections/{{ i.id }}/image" target="_blank" rel="noopener"><img src="/inspections/{{ i.id }}/image" alt="Foto de la hoja"></a>
+    <p class="muted">Toca la foto para verla en grande.</p>
+    {% if i.status == "pending_confirmation" %}
+    <form method="post" action="/inspections/{{ i.id }}/retake" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label for="photo">Repetir foto</label>
+      <input id="photo" name="photo" type="file" accept="image/*" capture="environment" required>
+      <button type="submit">Subir nueva foto</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if editable %}
+  <div class="card">
+    <form id="review" method="post" action="/inspections/{{ i.id }}/confirm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="{{ field_class('customer_name') }}">
+        <label for="customer_name">Nombre del cliente *</label>
+        <input id="customer_name" name="customer_name" type="text" value="{{ i.customer_name or '' }}">
+        {% if errors.customer_name %}<p class="error">{{ errors.customer_name }}</p>{% endif %}
+      </div>
+      <div class="{{ field_class('customer_phone') }}">
+        <label for="customer_phone">Teléfono *</label>
+        <input id="customer_phone" name="customer_phone" type="tel" value="{{ i.customer_phone or i.phone_raw or '' }}">
+        {% if errors.customer_phone %}<p class="error">{{ errors.customer_phone }}</p>
+        {% elif (i.field_confidence or {}).get("customer_phone") == "invalid" %}<p class="error">El teléfono leído no es válido. Corrígelo.</p>{% endif %}
+      </div>
+      <div class="{{ field_class('service_description') }}">
+        <label for="service_description">Servicio</label>
+        <textarea id="service_description" name="service_description" rows="3">{{ i.service_description or '' }}</textarea>
+      </div>
+      <label for="service_display">Servicio tal como lo verá el cliente (máx. 60 caracteres)</label>
+      <input id="service_display" name="service_display" type="text" maxlength="60" value="{{ i.service_display or '' }}">
+      <div class="{{ field_class('date') }}">
+        <label for="service_date">Fecha</label>
+        <input id="service_date" name="service_date" type="text" placeholder="dd/mm/aaaa"
+               value="{{ i.service_date.strftime('%d/%m/%Y') if i.service_date else '' }}">
+        {% if errors.service_date %}<p class="error">{{ errors.service_date }}</p>{% endif %}
+      </div>
+      {% if i.extra_fields %}
+      <p class="muted">Otros datos leídos:
+        {% for k, v in i.extra_fields.items() %}<br>{{ k }}: {{ v }}{% endfor %}</p>
+      {% endif %}
+      <button type="submit" name="action" value="save">Guardar cambios</button>
+      <button id="confirm-btn" class="primary" type="submit" name="action" value="confirm">Confirmar</button>
+    </form>
+    <form method="post" action="/inspections/{{ i.id }}/discard" onsubmit="return confirm('¿Descartar esta inspección?')">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button class="danger" type="submit">Descartar</button>
+    </form>
+  </div>
+  {% elif i.status != "pending_confirmation" and not duplicate_of %}
+  <div class="card">
+    <p><strong>Cliente:</strong> {{ i.customer_name or "—" }}</p>
+    <p><strong>Servicio:</strong> {{ i.service_display or i.service_description or "—" }}</p>
+    <p><strong>Fecha:</strong> {{ i.service_date.strftime('%d/%m/%Y') if i.service_date else "—" }}</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  // Confirm stays disabled until the required fields look valid; the server validates again.
+  (function () {
+    var btn = document.getElementById("confirm-btn");
+    if (!btn) return;
+    var name = document.getElementById("customer_name");
+    var phone = document.getElementById("customer_phone");
+    function check() {
+      var digits = (phone.value.match(/\d/g) || []).length;
+      btn.disabled = !(name.value.trim() && digits >= 9);
+    }
+    name.addEventListener("input", check);
+    phone.addEventListener("input", check);
+    check();
+  })();
+</script>
 {% endblock %}

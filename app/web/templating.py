@@ -30,3 +30,20 @@ def safe_next(url: str | None) -> str:
     if url and url.startswith("/") and not url.startswith("//"):
         return url
     return "/"
+
+
+STATUS_LABELS: dict[str, str] = {
+    "pending_confirmation": "Pendiente de confirmar",
+    "scheduled": "Encuesta programada",
+    "sent": "Encuesta enviada",
+    "answered": "Respondida",
+    "expired": "Caducada",
+    "failed": "Error de envío",
+    "discarded": "Descartada",
+    "opted_out": "Cliente dado de baja",
+}
+
+RATING_LABELS: dict[str, str] = {"good": "Bien", "okay": "Regular", "bad": "Mal"}
+
+templates.env.filters["status_label"] = lambda s: STATUS_LABELS.get(str(s), str(s))
+templates.env.filters["rating_label"] = lambda r: RATING_LABELS.get(str(r), "—") if r else "—"
