@@ -12,6 +12,7 @@ from app.integrations.ollama import OllamaError
 from app.models.db_models import Inspection
 from app.models.enums import ExtractionStatus, InspectionStatus
 from app.models.schemas import ExtractionResult
+from app.services import duplicates
 from app.services.normalization import clean_name, normalize_phone, parse_date, service_display
 from app.services.retry import backoff
 from app.services.storage import ImageStorage
@@ -142,4 +143,12 @@ def process_extraction(
     inspection.extraction_status = ExtractionStatus.UNREADABLE if is_unreadable(result) else ExtractionStatus.DONE
     db.commit()
     logger.info("inspection %s extraction finished: %s", inspection.id, inspection.extraction_status)
+
+    existing = duplicates.register(db, inspection)
+    if existing is not None:
+        duplicates.discard_as_duplicate(db, inspection, existing)
+        storage.delete(inspection.image_path)
+        inspection.image_path = None
+        inspection.image_deleted_at = now
+        db.commit()
     return inspection
