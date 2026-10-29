@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Nueva inspección{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Nueva inspección</h1>
+  <p class="muted">Haz una foto de la hoja de inspección inicial completa, con buena luz y sin cortar los bordes.</p>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <form method="post" action="/inspections/new" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="photo">Foto de la hoja</label>
+    <input id="photo" name="photo" type="file" accept="image/*" capture="environment" required>
+    <button class="primary" type="submit">Enviar</button>
+  </form>
+</div>
+{% endblock %}

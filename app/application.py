@@ -11,7 +11,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.config import Settings, get_settings
 from app.db import init_db
 from app.logging_utils import configure_logging
-from app.web import admin_routes, auth_routes
+from app.web import admin_routes, auth_routes, inspection_routes
 from app.web.security import LoginRequired
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -49,4 +49,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(auth_routes.router)
     app.include_router(admin_routes.router)
+    app.include_router(inspection_routes.router)
     return app

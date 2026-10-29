@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Inspecciones{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>{{ "Pendientes de confirmar" if status == "pending_confirmation" else "Inspecciones" }}</h1>
+  {% if not items %}<p class="muted">No hay inspecciones.</p>{% endif %}
+  <div class="table-wrap">
+  <table>
+    {% for i in items %}
+    <tr>
+      <td><a href="/inspections/{{ i.id }}/confirm">#{{ i.id }}</a></td>
+      <td>{{ i.customer_name or "—" }}</td>
+      <td>{{ i.service_display or i.service_description or "—" }}</td>
+      <td><span class="badge">{{ i.status }}</span></td>
+      <td class="muted">{{ i.created_at.strftime("%d/%m %H:%M") }} UTC</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+</div>
+{% endblock %}

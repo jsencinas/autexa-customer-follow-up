@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Inspección #{{ inspection.id }}{% endblock %}
+{% block head %}
+{% if inspection.extraction_status in ("pending", "processing") %}<meta http-equiv="refresh" content="3">{% endif %}
+{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Inspección #{{ inspection.id }}</h1>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  {% if inspection.extraction_status in ("pending", "processing") %}
+  <p>Leyendo la foto… esta página se actualiza sola.</p>
+  {% endif %}
+</div>
+{% endblock %}
