@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Revisión{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Respuestas por revisar</h1>
+  <p class="muted">El bot no estaba seguro de qué significaban estas respuestas. Decide tú: tu decisión queda registrada.</p>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  {% if not items %}<p class="muted">No hay nada pendiente.</p>{% endif %}
+</div>
+{% for m, i in items %}
+<div class="card">
+  <p><strong>{{ i.customer_name if i else "Cliente" }}</strong>
+    {% if i %}· {{ i.service_display or i.service_description or "" }} · <span class="badge">{{ i.status | status_label }}</span>{% endif %}</p>
+  <p>“{{ m.text or "(sin texto)" }}”</p>
+  <p class="muted">
+    Interpretación: {{ (m.intents or []) | join(", ") or "—" }}
+    {% if m.interpreted_rating %}· valoración {{ m.interpreted_rating | rating_label }}{% endif %}
+    {% if m.confidence is not none %}· confianza {{ "%.0f" | format(m.confidence * 100) }} %{% endif %}
+    {% if m.last_error %}· el modelo falló{% endif %}
+  </p>
+  <form class="inline" method="post" action="/admin/review/{{ m.id }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="decision" value="rating">
+    <select name="rating" aria-label="Valoración">
+      <option value="good" {% if m.interpreted_rating == "good" %}selected{% endif %}>Bien</option>
+      <option value="okay" {% if m.interpreted_rating == "okay" %}selected{% endif %}>Regular</option>
+      <option value="bad" {% if m.interpreted_rating == "bad" %}selected{% endif %}>Mal</option>
+    </select>
+    <button class="primary" type="submit">Guardar valoración</button>
+  </form>
+  <form class="inline" method="post" action="/admin/review/{{ m.id }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="decision" value="unrelated">
+    <button type="submit">No tiene que ver con la encuesta</button>
+  </form>
+  <form class="inline" method="post" action="/admin/review/{{ m.id }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="decision" value="opt_out">
+    <button class="danger" type="submit">Dar de baja</button>
+  </form>
+</div>
+{% endfor %}
+{% endblock %}

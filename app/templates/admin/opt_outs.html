@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Bajas{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>Clientes dados de baja</h1>
+  <p class="muted">Estos números nunca reciben mensajes del bot. Los empleados pueden seguir escribiéndoles a mano.</p>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  {% if not items %}<p class="muted">Nadie se ha dado de baja.</p>{% endif %}
+  <div class="table-wrap">
+  <table>
+    {% for o in items %}
+    <tr>
+      <td>{{ o.phone }}</td>
+      <td class="muted">{{ o.opted_out_at.strftime("%d/%m/%Y") }}</td>
+      <td class="muted">{{ {"button": "Botón", "interpreted": "Mensaje", "admin": "Administrador"}.get(o.source, o.source) }}</td>
+      <td>
+        <form method="post" action="/admin/opt-outs/{{ o.id }}/remove">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="text" name="reason" placeholder="Motivo (obligatorio)" aria-label="Motivo">
+          <button type="submit">Quitar de la lista</button>
+        </form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+</div>
+<div class="card">
+  <h2>Añadir número</h2>
+  <form method="post" action="/admin/opt-outs">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="phone">Teléfono</label>
+    <input id="phone" name="phone" type="tel" required>
+    <button class="primary" type="submit">Dar de baja</button>
+  </form>
+</div>
+{% endblock %}

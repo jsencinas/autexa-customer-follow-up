@@ -80,11 +80,22 @@ def login(client: TestClient, username: str, password: str = PASSWORD) -> None:
 
 
 @pytest.fixture
-def app(settings: Settings):  # type: ignore[no-untyped-def]
-    """The FastAPI app wired to the test settings."""
-    from app.application import create_app
+def sender():  # type: ignore[no-untyped-def]
+    """Fake WhatsApp sender used by web routes."""
+    from tests.fakes import FakeSender
 
-    return create_app(settings)
+    return FakeSender()
+
+
+@pytest.fixture
+def app(settings: Settings, sender):  # type: ignore[no-untyped-def]
+    """The FastAPI app wired to the test settings and a fake WhatsApp sender."""
+    from app.application import create_app
+    from app.web.deps import get_sender
+
+    application = create_app(settings)
+    application.dependency_overrides[get_sender] = lambda: sender
+    return application
 
 
 @pytest.fixture

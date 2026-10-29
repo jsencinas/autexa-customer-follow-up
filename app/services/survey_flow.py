@@ -74,8 +74,12 @@ def record_rating(
     now: datetime,
     *,
     comment: str | None = None,
+    notify: bool = True,
 ) -> None:
-    """Store the rating; then ask the optional question (or thank the customer if a comment came with it)."""
+    """Store the rating; then ask the optional question (or thank the customer if a comment came with it).
+
+    With notify=False (an admin deciding later) nothing is sent and the survey is closed.
+    """
     if not can_rate(inspection):
         return
     inspection.rating = rating
@@ -83,6 +87,10 @@ def record_rating(
     inspection.rating_source = source
     inspection.status = InspectionStatus.ANSWERED
     inspection.answered_at = now
+    if not notify:
+        inspection.survey_stage = SurveyStage.COMPLETED
+        db.commit()
+        return
     if comment:
         inspection.comment = comment
         inspection.comment_at = now

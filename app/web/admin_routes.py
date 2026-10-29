@@ -7,8 +7,12 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.db import get_db
-from app.models.enums import Role
-from app.services import admin_settings, auth
+from app.models.enums import OptOutSource, Rating, Role
+from app.services import admin_settings, auth, opt_out, review
+from app.services.messages import Messages
+from app.services.normalization import normalize_phone
+from app.services.surveys import MessageSender
+from app.web.deps import get_messages, get_sender
 from app.web.security import CurrentUser, require_admin, verify_csrf
 from app.web.templating import render
 
@@ -148,3 +152,80 @@ async def save_report(
 def _first_error(exc: ValidationError) -> str:
     err = exc.errors()[0]
     return str(err.get("msg", "Datos no válidos")).removeprefix("Value error, ")
+
+
+# --- Review queue ------------------------------------------------------------
+
+
+@router.get("/review", response_class=HTMLResponse)
+def review_page(
+    request: Request, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_db)
+) -> HTMLResponse:
+    """Replies the bot was unsure about."""
+    return render(request, "admin/review.html", {"items": review.pending_reviews(db)}, user=user)
+
+
+@router.post("/review/{message_id}", dependencies=[Depends(verify_csrf)], response_model=None)
+def resolve_review(
+    request: Request,
+    message_id: int,
+    decision: review.ReviewDecision = Form(...),
+    rating: Rating | None = Form(None),
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    sender: MessageSender = Depends(get_sender),
+    messages: Messages = Depends(get_messages),
+) -> HTMLResponse | RedirectResponse:
+    """Apply the admin's decision on one reply."""
+    try:
+        review.resolve(db, message_id, decision, user.id, sender, messages, settings, rating=rating)
+    except review.ReviewError as exc:
+        ctx = {"items": review.pending_reviews(db), "error": str(exc)}
+        return render(request, "admin/review.html", ctx, user=user, status_code=400)
+    return RedirectResponse("/admin/review", status_code=303)
+
+
+# --- Opt-out list -------------------------------------------------------------
+
+
+@router.get("/opt-outs", response_class=HTMLResponse)
+def opt_outs_page(
+    request: Request, user: CurrentUser = Depends(require_admin), db: Session = Depends(get_db)
+) -> HTMLResponse:
+    """Numbers that never receive bot messages."""
+    return render(request, "admin/opt_outs.html", {"items": opt_out.list_all(db)}, user=user)
+
+
+@router.post("/opt-outs", dependencies=[Depends(verify_csrf)], response_model=None)
+def add_opt_out(
+    request: Request,
+    phone: str = Form(...),
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> HTMLResponse | RedirectResponse:
+    """Add a number by hand (no message is sent to the customer)."""
+    normalized = normalize_phone(phone, settings.default_country_code)
+    if normalized is None:
+        ctx = {"items": opt_out.list_all(db), "error": "Teléfono no válido."}
+        return render(request, "admin/opt_outs.html", ctx, user=user, status_code=400)
+    opt_out.add(db, normalized, OptOutSource.ADMIN, created_by_id=user.id)
+    return RedirectResponse("/admin/opt-outs", status_code=303)
+
+
+@router.post("/opt-outs/{opt_out_id}/remove", dependencies=[Depends(verify_csrf)], response_model=None)
+def remove_opt_out(
+    request: Request,
+    opt_out_id: int,
+    reason: str = Form(""),
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> HTMLResponse | RedirectResponse:
+    """Remove a number; a reason is required and audited."""
+    try:
+        opt_out.remove(db, opt_out_id, reason, user.id)
+    except opt_out.OptOutError as exc:
+        ctx = {"items": opt_out.list_all(db), "error": str(exc)}
+        return render(request, "admin/opt_outs.html", ctx, user=user, status_code=400)
+    return RedirectResponse("/admin/opt-outs", status_code=303)
