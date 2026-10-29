@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Ajustes{% endblock %}
+{% block content %}
+{% if error %}<div class="card"><p class="error">{{ error }}</p></div>{% endif %}
+{% if request.query_params.get("saved") %}<div class="card"><p class="ok">Ajustes guardados.</p></div>{% endif %}
+
+<div class="card">
+  <h1>Horario de envío de encuestas</h1>
+  <p class="muted">Las encuestas solo se envían dentro de este horario. Los cambios se aplican también a las encuestas ya programadas.</p>
+  <form method="post" action="/admin/settings/hours">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="timezone">Zona horaria</label>
+    <input id="timezone" name="timezone" type="text" value="{{ hours.timezone }}" required>
+    <div class="table-wrap">
+    <table>
+      <tr><th>Día</th><th>Activo</th><th>Desde</th><th>Hasta</th></tr>
+      {% for day, label in day_labels.items() %}
+      {% set d = hours.days[day] %}
+      <tr>
+        <td>{{ label }}</td>
+        <td><input type="checkbox" name="{{ day }}_enabled" {% if d.enabled %}checked{% endif %} aria-label="{{ label }} activo"></td>
+        <td><input type="time" name="{{ day }}_start" value="{{ d.start.strftime('%H:%M') }}" aria-label="{{ label }} desde"></td>
+        <td><input type="time" name="{{ day }}_end" value="{{ d.end.strftime('%H:%M') }}" aria-label="{{ label }} hasta"></td>
+      </tr>
+      {% endfor %}
+    </table>
+    </div>
+    <label for="hours_password">Tu contraseña (para confirmar el cambio)</label>
+    <input id="hours_password" name="current_password" type="password" autocomplete="current-password" required>
+    <button class="primary" type="submit">Guardar horario</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Informe mensual por correo</h2>
+  <form method="post" action="/admin/settings/report">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="recipients">Destinatarios (uno por línea)</label>
+    <textarea id="recipients" name="recipients" rows="4">{{ report.recipients | join("\n") }}</textarea>
+    <label for="day">Día del mes (1–28)</label>
+    <input id="day" name="day" type="number" min="1" max="28" value="{{ report.day }}">
+    <label for="send_time">Hora de envío</label>
+    <input id="send_time" name="send_time" type="time" value="{{ report.send_time.strftime('%H:%M') }}">
+    <label for="report_password">Tu contraseña (para confirmar el cambio)</label>
+    <input id="report_password" name="current_password" type="password" autocomplete="current-password" required>
+    <button class="primary" type="submit">Guardar informe</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Historial de cambios</h2>
+  {% if not audit %}<p class="muted">Sin cambios todavía.</p>{% endif %}
+  <div class="table-wrap">
+  <table>
+    {% for a in audit %}
+    <tr><td class="muted">{{ a.created_at.strftime("%d/%m/%Y %H:%M") }} UTC</td><td>{{ a.action }}</td><td>{{ a.target or "" }}</td><td class="muted">{{ usernames.get(a.user_id, "sistema") }}</td></tr>
+    {% endfor %}
+  </table>
+  </div>
+</div>
+{% endblock %}
