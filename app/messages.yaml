@@ -1,0 +1,72 @@
+# All customer-facing text. Edit or translate here without touching code.
+# Default language: Spanish.
+
+# Pre-approved WhatsApp templates (business-initiated first message).
+# Register each one in WhatsApp Manager with EXACTLY this text and buttons (see README).
+# {{1}} = customer first name, {{2}} = service as shown to the customer.
+# `buttons` lists the quick-reply buttons in order; the bot attaches a payload to each.
+survey_templates:
+  - name: encuesta_satisfaccion_v1
+    language: es
+    text: "Hola {{1}}, gracias por confiar en nosotros para {{2}}. ¿Qué tal fue tu experiencia?"
+    buttons: [good, okay, bad, opt_out]
+  - name: encuesta_satisfaccion_v2
+    language: es
+    text: "¡Hola {{1}}! Hace poco nos encargamos de {{2}}. ¿Nos cuentas qué tal fue?"
+    buttons: [good, okay, bad, opt_out]
+  - name: encuesta_satisfaccion_v3
+    language: es
+    text: "{{1}}, queremos mejorar cada día. ¿Cómo valorarías nuestro trabajo en {{2}}?"
+    buttons: [good, okay, bad, opt_out]
+  - name: encuesta_satisfaccion_v4
+    language: es
+    text: "Hola {{1}} 👋 Esperamos que todo vaya bien después de {{2}}. ¿Cómo lo valorarías?"
+    buttons: [good, okay, bad, opt_out]
+
+# Button labels to register with the templates (same order as `buttons`).
+button_labels:
+  good: "Bien"
+  okay: "Regular"
+  bad: "Mal"
+  opt_out: "No enviar más mensajes"
+
+# Used for {{2}} when the employee left the customer-facing service text empty.
+service_fallback: "nuestro servicio"
+
+# Free-form follow-ups (sent inside the 24h customer service window). One variant is picked per survey.
+followup_question:
+  - "¡Gracias por tu respuesta! ¿Hay algo que quieras contarnos? Es opcional."
+  - "Muchas gracias. Si quieres, cuéntanos cualquier cosa que podamos mejorar."
+  - "¡Gracias! ¿Te gustaría añadir algún comentario? No es obligatorio."
+
+thanks:
+  - "¡Gracias por tu comentario! Nos ayuda mucho."
+  - "Muchas gracias, lo tendremos en cuenta."
+  - "¡Gracias! Que tengas un buen día."
+
+opt_out_confirmation:
+  - "Entendido, no te enviaremos más mensajes automáticos. Si necesitas algo, escríbenos cuando quieras."
+
+# Phrases recognised without the LLM (compared after lowercasing and removing accents/punctuation).
+# A message that is exactly one of these is a rating.
+rating_phrases:
+  good: ["bien", "muy bien", "genial", "perfecto", "excelente", "estupendo", "todo bien", "bueno", "👍", "5", "4"]
+  okay: ["regular", "normal", "mas o menos", "aceptable", "3"]
+  bad: ["mal", "muy mal", "fatal", "horrible", "malo", "👎", "1", "2"]
+
+# A message containing one of these is an opt-out (the safe direction: better to stop than to keep messaging).
+opt_out_phrases:
+  - "stop"
+  - "baja"
+  - "darme de baja"
+  - "no quiero mas mensajes"
+  - "no quiero recibir"
+  - "no me escribais"
+  - "no me escribas"
+  - "no me mandeis"
+  - "no me mandes"
+  - "dejad de escribirme"
+  - "deja de escribirme"
+  - "dejen de escribirme"
+  - "no molestar"
+  - "no me molesteis"
