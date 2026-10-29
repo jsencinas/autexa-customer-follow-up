@@ -75,3 +75,16 @@ class FakeInterpreter:
         if isinstance(item, Exception):
             raise item
         return LlmInterpretation.model_validate(item)
+
+
+@dataclass
+class FakeMailer:
+    """Records sent emails; can be told to fail."""
+
+    sent: list[object] = field(default_factory=list)
+    errors: list[Exception] = field(default_factory=list)
+
+    def send(self, email) -> None:  # type: ignore[no-untyped-def]
+        if self.errors:
+            raise self.errors.pop(0)
+        self.sent.append(email)

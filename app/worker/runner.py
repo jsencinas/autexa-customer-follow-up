@@ -9,7 +9,8 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
-from app.services import extraction, inspections, reply_interpretation, scheduler
+from app.services import extraction, inspections, reply_interpretation, reports, scheduler
+from app.services.reports import Mailer
 from app.services.extraction import Extractor
 from app.services.messages import Messages
 from app.services.reply_interpretation import ReplyInterpreter
@@ -33,6 +34,7 @@ class WorkerDeps:
     sender: MessageSender
     extractor: Extractor
     interpreter: ReplyInterpreter
+    mailer: Mailer
     sleep: Callable[[float], None] = time_module.sleep
 
 
@@ -67,6 +69,7 @@ class Worker:
             self._job("recover_sends", self.recover_sends, now)
             self._job("surveys", self.send_due_surveys, now)
             self._job("expire", self.expire_unconfirmed, now)
+            self._job("monthly_report", self.send_monthly_report, now)
         if self._due("retention", RETENTION_INTERVAL, now):
             self._job("retention", self.purge_images, now)
 
@@ -114,6 +117,10 @@ class Worker:
     def expire_unconfirmed(self, db: Session, now: datetime) -> None:
         """Expire inspections nobody confirmed in time."""
         scheduler.expire_unconfirmed(db, now)
+
+    def send_monthly_report(self, db: Session, now: datetime) -> None:
+        """Send the monthly report when due (and any manual resends)."""
+        reports.run_monthly_report(db, self.deps.mailer, self.deps.settings, now)
 
     def purge_images(self, db: Session, now: datetime) -> None:
         """Apply the photo retention period."""

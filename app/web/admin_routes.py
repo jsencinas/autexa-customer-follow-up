@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from app.db import get_db
 from app.models.enums import OptOutSource, Rating, Role
-from app.services import admin_settings, auth, opt_out, review, stats
+from app.services import admin_settings, auth, opt_out, reports, review, stats
 from app.services.messages import Messages
 from app.services.normalization import normalize_phone
 from app.services.surveys import MessageSender
@@ -80,6 +80,7 @@ def _settings_context(db: Session, settings: Settings, **extra: object) -> dict[
         "day_labels": DAY_LABELS,
         "audit": admin_settings.audit_entries(db, 20),
         "usernames": {u.id: u.username for u in auth.list_users(db)},
+        "reports": reports.recent_reports(db),
         **extra,
     }
 
@@ -144,6 +145,7 @@ async def save_report(
             recipients=[r for r in raw.replace(",", "\n").splitlines()],
             day=int(str(form.get("day") or 1)),
             send_time=str(form.get("send_time") or "08:00"),
+            include_csv=form.get("include_csv") == "on",
         )
     except (ValidationError, ValueError) as exc:
         message = _first_error(exc) if isinstance(exc, ValidationError) else "Día no válido."
@@ -317,3 +319,20 @@ def export_surveys(
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="encuestas.csv"'},
     )
+
+
+@router.post("/reports/resend", dependencies=[Depends(verify_csrf)])
+def resend_report(
+    period: str = Form(...),
+    user: CurrentUser = Depends(require_admin),
+    db: Session = Depends(get_db),
+) -> RedirectResponse:
+    """Queue a monthly report (YYYY-MM) to be sent again by the worker."""
+    try:
+        year, month = (int(p) for p in period.split("-", 1))
+        if not 1 <= month <= 12:
+            raise ValueError
+    except ValueError:
+        raise HTTPException(400, "Mes no válido (AAAA-MM)") from None
+    reports.request_resend(db, year, month, user.id)
+    return RedirectResponse("/admin/settings?resent=1", status_code=303)

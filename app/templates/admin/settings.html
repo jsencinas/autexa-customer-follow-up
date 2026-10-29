@@ -41,9 +41,33 @@
     <input id="day" name="day" type="number" min="1" max="28" value="{{ report.day }}">
     <label for="send_time">Hora de envío</label>
     <input id="send_time" name="send_time" type="time" value="{{ report.send_time.strftime('%H:%M') }}">
+    <label><input type="checkbox" name="include_csv" {% if report.include_csv %}checked{% endif %}> Adjuntar CSV con los datos (incluye teléfonos)</label>
     <label for="report_password">Tu contraseña (para confirmar el cambio)</label>
     <input id="report_password" name="current_password" type="password" autocomplete="current-password" required>
     <button class="primary" type="submit">Guardar informe</button>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Informes enviados</h2>
+  {% if request.query_params.get("resent") %}<p class="ok">El informe se enviará en el próximo minuto.</p>{% endif %}
+  {% if not reports %}<p class="muted">Todavía no se ha generado ningún informe.</p>{% endif %}
+  <div class="table-wrap">
+  <table>
+    {% for r in reports %}
+    <tr>
+      <td>{{ "%04d-%02d" | format(r.year, r.month) }}</td>
+      <td><span class="badge">{{ {"pending": "Pendiente", "sending": "Enviando", "sent": "Enviado", "failed": "Error"}.get(r.status, r.status) }}</span></td>
+      <td class="muted">{{ r.sent_at.strftime("%d/%m/%Y %H:%M") ~ " UTC" if r.sent_at else (r.last_error or "") }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  </div>
+  <form method="post" action="/admin/reports/resend">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="period">Enviar de nuevo el informe de</label>
+    <input id="period" name="period" type="month" required>
+    <button type="submit">Enviar informe</button>
   </form>
 </div>
 

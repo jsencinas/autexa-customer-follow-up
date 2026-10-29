@@ -70,6 +70,7 @@ class ReportSettings(BaseModel):
     recipients: list[str] = Field(default_factory=list)
     day: int = Field(default=1, ge=1, le=28)
     send_time: time = time(8, 0)
+    include_csv: bool = False
 
     @field_validator("recipients")
     @classmethod

@@ -2,6 +2,7 @@
 
 from app.config import get_settings
 from app.db import init_db
+from app.integrations.email_client import EmailClient
 from app.integrations.extraction_client import ExtractionClient
 from app.integrations.llm_client import ReplyInterpreterClient
 from app.integrations.ollama import OllamaClient
@@ -28,6 +29,14 @@ def main() -> None:
         ),
         extractor=ExtractionClient(ollama, settings.extraction_model),
         interpreter=ReplyInterpreterClient(ollama, settings.reply_model),
+        mailer=EmailClient(
+            settings.smtp_host,
+            settings.smtp_port,
+            settings.smtp_username,
+            settings.smtp_password,
+            settings.smtp_from,
+            settings.smtp_starttls,
+        ),
     )
     Worker(deps).run_forever()
 

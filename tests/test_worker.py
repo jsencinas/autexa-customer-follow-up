@@ -8,7 +8,7 @@ from app.models.enums import ExtractionStatus, InspectionStatus
 from app.services import inspections, scheduler
 from app.services.messages import load_messages
 from app.worker.runner import Worker, WorkerDeps
-from tests.fakes import FakeInterpreter, FakeSender, scheduled_inspection
+from tests.fakes import FakeInterpreter, FakeMailer, FakeSender, scheduled_inspection
 from tests.test_extraction import JPEG, FakeExtractor, good_result
 
 OPEN = datetime(2026, 10, 14, 10, 0, tzinfo=UTC)
@@ -23,6 +23,7 @@ def make_worker(session_factory: sessionmaker[Session], settings: Settings, send
         sender=sender or FakeSender(),
         extractor=extractor or FakeExtractor([]),
         interpreter=FakeInterpreter(),
+        mailer=FakeMailer(),
         sleep=sleeps.append,
     )
     worker = Worker(deps)
