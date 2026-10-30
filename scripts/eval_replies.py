@@ -8,10 +8,13 @@ import json
 import sys
 from pathlib import Path
 
-from app.config import get_settings
-from app.integrations.llm_client import ReplyInterpreterClient
-from app.integrations.ollama import OllamaClient
-from app.services.messages import load_messages
+# Make the project importable when run as `python scripts/eval_replies.py`.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from app.config import get_settings  # noqa: E402
+from app.integrations.llm_client import ReplyInterpreterClient  # noqa: E402
+from app.integrations.ollama import OllamaClient  # noqa: E402
+from app.services.messages import load_messages  # noqa: E402
 
 DEFAULT_FIXTURES = Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "replies_es.jsonl"
 
