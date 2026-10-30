@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     ollama_timeout_seconds: float = 300.0
     ollama_keep_alive: str = "30m"
     # Long side (px) of the photo sent to the vision model; smaller is faster on CPU.
-    extraction_max_image_side: int = 1024
+    extraction_max_image_side: int = 1200
 
     # Survey flow
     survey_delay_hours: float = 24.0
