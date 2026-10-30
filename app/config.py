@@ -25,8 +25,8 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     # Phone normalization (ISO 3166 region used when a number has no country prefix)
-    default_country_code: str = "ES"
-    business_timezone: str = "Europe/Madrid"
+    default_country_code: str = "MX"
+    business_timezone: str = "America/Mexico_City"
 
     # WhatsApp Cloud API
     whatsapp_access_token: str = ""
@@ -40,7 +40,10 @@ class Settings(BaseSettings):
     ollama_url: str = "http://localhost:11434"
     extraction_model: str = "qwen2.5vl:7b"
     reply_model: str = "qwen2.5:7b"
-    ollama_timeout_seconds: float = 120.0
+    ollama_timeout_seconds: float = 300.0
+    ollama_keep_alive: str = "30m"
+    # Long side (px) of the photo sent to the vision model; smaller is faster on CPU.
+    extraction_max_image_side: int = 1024
 
     # Survey flow
     survey_delay_hours: float = 24.0

@@ -23,7 +23,7 @@ def main() -> int:
     """Run every labelled reply through the model and print a report."""
     path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_FIXTURES
     settings = get_settings()
-    client = ReplyInterpreterClient(OllamaClient(settings.ollama_url, settings.ollama_timeout_seconds), settings.reply_model)
+    client = ReplyInterpreterClient(OllamaClient(settings.ollama_url, settings.ollama_timeout_seconds, keep_alive=settings.ollama_keep_alive), settings.reply_model)
     bot_message = load_messages(settings.messages_file).survey_templates[0].text
     cases = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     opt_out_cases = opt_out_hits = rating_cases = rating_hits = false_opt_outs = 0

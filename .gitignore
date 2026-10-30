@@ -5,4 +5,5 @@ __pycache__/
 data/
 .pytest_cache/
 *.egg-info/
-./attatchments
+# Real inspection photos for local testing (contain customer data, never commit)
+/samples/

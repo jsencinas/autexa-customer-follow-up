@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.models.db_models import ContactActivity, EmployeeMessage, InboundMessage, Inspection
 from app.models.enums import InboundStatus, InspectionStatus, SurveyStage
 from app.models.schemas import WaEcho, WaMessage, WaStatus, WebhookPayload
+from app.services.normalization import canonical_mexico
 from app.timeutils import utcnow
 
 logger = logging.getLogger(__name__)
@@ -26,9 +27,9 @@ class StoreSummary:
 
 
 def to_e164(wa_number: str) -> str:
-    """WhatsApp sends numbers as digits without '+'."""
+    """WhatsApp sends numbers as digits without '+' (and Mexican mobiles with a legacy 521 prefix)."""
     digits = "".join(ch for ch in wa_number if ch.isdigit())
-    return f"+{digits}"
+    return canonical_mexico(f"+{digits}")
 
 
 def _timestamp(value: str, fallback: datetime) -> datetime:

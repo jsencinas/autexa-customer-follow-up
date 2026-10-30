@@ -11,9 +11,10 @@ from app.config import Settings
 from app.integrations.ollama import OllamaError
 from app.models.db_models import Inspection
 from app.models.enums import ExtractionStatus, InspectionStatus
-from app.models.schemas import ExtractionResult
+from app.models.schemas import ExtractedField, ExtractionResult
 from app.services import duplicates
 from app.services.normalization import clean_name, normalize_phone, parse_date, service_display
+from app.services.image_prep import prepare_for_model
 from app.services.retry import backoff
 from app.services.storage import ImageStorage
 from app.timeutils import utcnow
@@ -57,11 +58,20 @@ def claim_due_extractions(db: Session, now: datetime | None = None, limit: int =
 
 
 def is_unreadable(result: ExtractionResult) -> bool:
-    """True if the photo is not a form or most key fields are missing."""
-    if not result.is_inspection_form:
-        return True
+    """True if most key fields are missing.
+
+    The model's own "is this a form?" answer is not used: in tests on real photos it said "no"
+    for forms it had just read correctly.
+    """
     missing = sum(1 for name in KEY_FIELDS if getattr(result, name).value is None)
     return missing >= UNREADABLE_MISSING_FIELDS
+
+
+def vehicle_display(other_fields: dict[str, ExtractedField]) -> str | None:
+    """Customer-facing fallback when no service was written: "tu Chevrolet Aveo"."""
+    parts = [other_fields[k].value for k in ("vehicle_brand", "vehicle_model") if k in other_fields]
+    words = " ".join(p for p in parts if p)
+    return service_display(f"tu {words}") if words else None
 
 
 def apply_extraction(inspection: Inspection, result: ExtractionResult, default_region: str) -> None:
@@ -82,7 +92,9 @@ def apply_extraction(inspection: Inspection, result: ExtractionResult, default_r
         confidence["customer_phone"] = "invalid"
 
     inspection.service_description = result.service_description.value
-    inspection.service_display = service_display(result.service_description.value)
+    inspection.service_display = service_display(result.service_description.value) or vehicle_display(
+        result.other_fields
+    )
     conf("service_description", inspection.service_description)
 
     parsed = parse_date(result.date.value)
@@ -120,7 +132,8 @@ def process_extraction(
 
     inspection.extraction_attempts += 1
     try:
-        result, raw = extractor.extract(storage.read(inspection.image_path))
+        image = prepare_for_model(storage.read(inspection.image_path), settings.extraction_max_image_side)
+        result, raw = extractor.extract(image)
     except (OllamaError, OSError) as exc:
         inspection.extraction_error = str(exc)[:500]
         if inspection.extraction_attempts >= settings.max_extraction_attempts:

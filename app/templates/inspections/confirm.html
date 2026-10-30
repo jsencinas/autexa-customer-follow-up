@@ -30,7 +30,7 @@
       Si sigue fallando, podrás introducir los datos a mano.
     </div>
     {% else %}
-    <p>Leyendo la foto… se mostrará aquí en cuanto termine.</p>
+    <p>Leyendo la foto… se mostrará aquí en cuanto termine (suele tardar uno o dos minutos).</p>
     {% endif %}
     <a class="button" href="/inspections/{{ i.id }}/confirm?manual=1">Introducir los datos a mano</a>
   {% elif i.status == "pending_confirmation" and i.extraction_status == "unreadable" %}
@@ -95,6 +95,7 @@
         <textarea id="service_description" name="service_description" rows="3">{{ i.service_description or '' }}</textarea>
       </div>
       <label for="service_display">Servicio tal como lo verá el cliente (máx. 60 caracteres)</label>
+      <p class="muted">Ej.: «el cambio de aceite» o «tu Chevrolet Aveo». Aparece en «gracias por confiar en nosotros para …».</p>
       <input id="service_display" name="service_display" type="text" maxlength="60" value="{{ i.service_display or '' }}">
       <div class="{{ field_class('date') }}">
         <label for="service_date">Fecha</label>

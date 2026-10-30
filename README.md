@@ -55,7 +55,7 @@ Every variable is listed with its default in `.env.example`. The ones you must s
 | `WHATSAPP_APP_SECRET` | Meta app secret, used to verify the `X-Hub-Signature-256` of every webhook call |
 | `WHATSAPP_VERIFY_TOKEN` | Any random string; you type the same value in the webhook configuration |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` | Email account for the monthly report |
-| `BUSINESS_TIMEZONE`, `DEFAULT_COUNTRY_CODE` | e.g. `Europe/Madrid`, `ES` (used for numbers written without a prefix) |
+| `BUSINESS_TIMEZONE`, `DEFAULT_COUNTRY_CODE` | Default `America/Mexico_City`, `MX` (country used for numbers written without a prefix) |
 
 Sending hours (`DEFAULT_SENDING_*`) and the report day/time (`DEFAULT_REPORT_*`) are only initial
 defaults: once the admin saves them in **Ajustes**, the database values are used.
@@ -113,10 +113,11 @@ file until Meta approves it.
 | `encuesta_satisfaccion_v1` | Hola {{1}}, gracias por confiar en nosotros para {{2}}. ¿Qué tal fue tu experiencia? |
 | `encuesta_satisfaccion_v2` | ¡Hola {{1}}! Hace poco nos encargamos de {{2}}. ¿Nos cuentas qué tal fue? |
 | `encuesta_satisfaccion_v3` | {{1}}, queremos mejorar cada día. ¿Cómo valorarías nuestro trabajo en {{2}}? |
-| `encuesta_satisfaccion_v4` | Hola {{1}} 👋 Esperamos que todo vaya bien después de {{2}}. ¿Cómo lo valorarías? |
+| `encuesta_satisfaccion_v4` | Hola {{1}} 👋 Esperamos que todo vaya bien con {{2}}. ¿Cómo valorarías nuestro servicio? |
 
 - **Variables:** `{{1}}` = customer's first name, `{{2}}` = service as shown to the customer
-  (sample values for the review, e.g. `María`, `el cambio de aceite`).
+  (sample values for the review, e.g. `María`, `el cambio de aceite`). When the form has no service
+  written, the bot pre-fills the vehicle instead (`tu Chevrolet Aveo`); the employee can edit it.
 - **Buttons:** four *Quick reply* buttons, in this order: `Bien`, `Regular`, `Mal`,
   `No enviar más mensajes`. The bot attaches a payload to each button
   (`survey:<id>:good|okay|bad|opt_out`), so a tap is matched to the right survey without

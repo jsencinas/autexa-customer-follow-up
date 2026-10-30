@@ -29,7 +29,6 @@ class ExtractionResult(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    is_inspection_form: bool = True
     customer_name: ExtractedField = Field(default_factory=ExtractedField)
     customer_phone: ExtractedField = Field(default_factory=ExtractedField)
     service_description: ExtractedField = Field(default_factory=ExtractedField)
@@ -37,27 +36,52 @@ class ExtractionResult(BaseModel):
     other_fields: dict[str, ExtractedField] = Field(default_factory=dict)
 
 
+# Fields the model is asked for. Kept short on purpose: on CPU, generation time grows with every
+# output token, so the model returns only what the app uses (no transcription of the whole form).
+VEHICLE_FIELDS: tuple[str, ...] = ("vehicle_brand", "vehicle_model", "plates")
+COMPACT_FIELDS: tuple[str, ...] = ("customer_name", "customer_phone", "service_description", "date", *VEHICLE_FIELDS)
+
+
+class CompactExtraction(BaseModel):
+    """Raw model output: plain values plus the list of fields the model is unsure about."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    customer_name: str | None = None
+    customer_phone: str | None = None
+    service_description: str | None = None
+    date: str | None = None
+    vehicle_brand: str | None = None
+    vehicle_model: str | None = None
+    plates: str | None = None
+    unsure_fields: list[str] = Field(default_factory=list)
+
+    def to_result(self) -> ExtractionResult:
+        """Convert to the per-field representation used by the services."""
+        unsure = set(self.unsure_fields)
+
+        def field(name: str) -> ExtractedField:
+            return ExtractedField(value=getattr(self, name), confidence="low" if name in unsure else "high")
+
+        return ExtractionResult(
+            customer_name=field("customer_name"),
+            customer_phone=field("customer_phone"),
+            service_description=field("service_description"),
+            date=field("date"),
+            other_fields={name: field(name) for name in VEHICLE_FIELDS},
+        )
+
+
 def extraction_json_schema() -> dict[str, object]:
     """JSON schema handed to Ollama's `format` parameter for extraction."""
-    field = {
-        "type": "object",
-        "properties": {
-            "value": {"type": ["string", "null"]},
-            "confidence": {"type": "string", "enum": ["high", "low"]},
-        },
-        "required": ["value", "confidence"],
-    }
+    nullable = {"type": ["string", "null"]}
     return {
         "type": "object",
         "properties": {
-            "is_inspection_form": {"type": "boolean"},
-            "customer_name": field,
-            "customer_phone": field,
-            "service_description": field,
-            "date": field,
-            "other_fields": {"type": "object", "additionalProperties": field},
+            **{name: nullable for name in COMPACT_FIELDS},
+            "unsure_fields": {"type": "array", "items": {"type": "string", "enum": list(COMPACT_FIELDS)}},
         },
-        "required": ["is_inspection_form", "customer_name", "customer_phone", "service_description", "date"],
+        "required": [*COMPACT_FIELDS, "unsure_fields"],
     }
 
 

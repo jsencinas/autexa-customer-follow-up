@@ -148,7 +148,7 @@ def test_review_page_rejects_missing_phone(
 def test_unreadable_page_offers_retake_and_manual(
     employee_client: TestClient, db: Session, settings: Settings, pending: Inspection
 ) -> None:
-    _extract(db, settings, good_result(is_inspection_form=False))
+    _extract(db, settings, good_result(customer_name={"value": None}, customer_phone={"value": None}, service_description={"value": None}))
     page = employee_client.get(f"/inspections/{pending.id}/confirm").text
     assert "No hemos podido leer esta foto" in page
     assert "/retake" in page and 'id="review"' in page

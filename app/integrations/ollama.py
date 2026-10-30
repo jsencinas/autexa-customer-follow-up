@@ -25,9 +25,20 @@ class OllamaBadResponse(OllamaError):
 class OllamaClient:
     """Calls `POST /api/chat` and returns the parsed JSON content of the reply."""
 
-    def __init__(self, base_url: str, timeout: float, http: httpx.Client | None = None) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        timeout: float,
+        http: httpx.Client | None = None,
+        keep_alive: str = "30m",
+        max_output_tokens: int = 400,
+    ) -> None:
         self.base_url = base_url.rstrip("/")
         self.http = http or httpx.Client(timeout=timeout)
+        # Keeping the model in memory avoids reloading several GB for every photo.
+        self.keep_alive = keep_alive
+        # Output tokens dominate the time on CPU; a cap stops a runaway answer from blocking the worker.
+        self.max_output_tokens = max_output_tokens
 
     def chat_json(
         self,
@@ -46,7 +57,8 @@ class OllamaClient:
             "messages": [{"role": "system", "content": system}, message],
             "format": schema,
             "stream": False,
-            "options": {"temperature": 0},
+            "keep_alive": self.keep_alive,
+            "options": {"temperature": 0, "num_predict": self.max_output_tokens},
         }
         try:
             response = self.http.post(f"{self.base_url}/api/chat", json=payload)

@@ -16,7 +16,7 @@ def main() -> None:
     """Build the real clients and run the worker loop."""
     settings = get_settings()
     configure_logging(settings.log_level)
-    ollama = OllamaClient(settings.ollama_url, settings.ollama_timeout_seconds)
+    ollama = OllamaClient(settings.ollama_url, settings.ollama_timeout_seconds, keep_alive=settings.ollama_keep_alive)
     deps = WorkerDeps(
         session_factory=init_db(settings.database_url),
         settings=settings,

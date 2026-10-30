@@ -8,6 +8,18 @@ import phonenumbers
 SERVICE_DISPLAY_MAX = 60
 
 
+def canonical_mexico(e164: str) -> str:
+    """Drop the legacy mobile "1" of Mexican numbers: +52 1 XXXXXXXXXX -> +52 XXXXXXXXXX.
+
+    WhatsApp still identifies Mexican mobiles as 521 + 10 digits, while forms are written
+    without the 1; both must map to the same number so replies match their survey.
+    """
+    digits = e164.lstrip("+")
+    if digits.startswith("521") and len(digits) == 13:
+        return "+52" + digits[3:]
+    return e164
+
+
 def normalize_phone(raw: str | None, default_region: str) -> str | None:
     """Return the number in E.164 format, or None if it is missing or invalid."""
     if not raw:
@@ -15,6 +27,8 @@ def normalize_phone(raw: str | None, default_region: str) -> str | None:
     cleaned = raw.strip()
     if cleaned.startswith("00"):
         cleaned = "+" + cleaned[2:]
+    if cleaned.startswith("+"):
+        cleaned = canonical_mexico("+" + "".join(ch for ch in cleaned if ch.isdigit()))
     try:
         parsed = phonenumbers.parse(cleaned, default_region.upper())
     except phonenumbers.NumberParseException:

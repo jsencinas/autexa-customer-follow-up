@@ -1,9 +1,11 @@
+import io
 import json
 from datetime import date, timedelta
 from typing import Any
 
 import httpx
 import pytest
+from PIL import Image
 from sqlalchemy.orm import Session
 
 from app.config import Settings
@@ -23,7 +25,13 @@ from app.services.normalization import (
 )
 from app.timeutils import utcnow
 
-JPEG = b"\xff\xd8\xff\xe0" + b"0" * 50
+def _tiny_jpeg() -> bytes:
+    out = io.BytesIO()
+    Image.new("RGB", (40, 30), "white").save(out, format="JPEG")
+    return out.getvalue()
+
+
+JPEG = _tiny_jpeg()
 
 
 def good_result(**overrides: Any) -> ExtractionResult:
@@ -53,6 +61,13 @@ class FakeExtractor:
 
 
 # --- normalization -------------------------------------------------------
+
+
+def test_normalize_mexican_phone() -> None:
+    assert normalize_phone("55-80-23-17-22", "MX") == "+525580231722"
+    # WhatsApp's legacy 521 mobile prefix maps to the same number.
+    assert normalize_phone("+52 1 55 8023 1722", "MX") == "+525580231722"
+    assert normalize_phone("5580231722", "ES") is None
 
 
 def test_normalize_phone() -> None:
@@ -92,18 +107,34 @@ def _ollama(handler) -> OllamaClient:  # type: ignore[no-untyped-def]
     return OllamaClient("http://ollama", 5, http=httpx.Client(transport=httpx.MockTransport(handler)))
 
 
-def test_ollama_client_sends_schema_and_images() -> None:
+COMPACT = {
+    "customer_name": "Azteca",
+    "customer_phone": "55-80-23-17-22",
+    "service_description": None,
+    "date": "09/09/26",
+    "vehicle_brand": "Chevrolet",
+    "vehicle_model": "Aveo",
+    "plates": "GCZ999D",
+    "unsure_fields": ["customer_phone"],
+}
+
+
+def test_ollama_client_sends_compact_schema_and_images() -> None:
     seen: dict[str, Any] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.update(json.loads(request.content))
-        return httpx.Response(200, json={"message": {"content": json.dumps(good_result().model_dump())}})
+        return httpx.Response(200, json={"message": {"content": json.dumps(COMPACT)}})
 
     client = ExtractionClient(_ollama(handler), "vision-model")
     result, raw = client.extract(JPEG)
-    assert result.customer_phone.value == "612 345 678"
-    assert seen["model"] == "vision-model" and seen["stream"] is False
-    assert seen["format"]["type"] == "object"
+    assert result.customer_phone.value == "55-80-23-17-22" and result.customer_phone.confidence == "low"
+    assert result.customer_name.confidence == "high" and result.service_description.value is None
+    assert result.other_fields["vehicle_brand"].value == "Chevrolet"
+    assert raw == COMPACT
+    assert seen["model"] == "vision-model" and seen["stream"] is False and seen["keep_alive"] == "30m"
+    assert seen["options"]["num_predict"] == 400
+    assert set(seen["format"]["properties"]) == set(COMPACT)
     assert seen["messages"][1]["images"]
 
 
@@ -121,7 +152,7 @@ def test_ollama_client_error_classification() -> None:
 
 
 def test_extraction_client_rejects_invalid_output() -> None:
-    bad = {"message": {"content": json.dumps({"customer_name": {"value": "x", "confidence": "maybe"}})}}
+    bad = {"message": {"content": json.dumps({"customer_name": "x", "unsure_fields": "not-a-list"})}}
     client = ExtractionClient(_ollama(lambda r: httpx.Response(200, json=bad)), "m")
     with pytest.raises(OllamaBadResponse):
         client.extract(JPEG)
@@ -149,6 +180,7 @@ def test_successful_extraction_normalizes_fields(db: Session, settings: Settings
     assert result.service_display == "Cambio de aceite y filtros"
     assert result.service_date == date(2026, 10, 3)
     assert result.extra_fields == {"Matrícula": "1234ABC"}
+    assert result.raw_extraction is not None
     assert result.field_confidence == {
         "customer_name": "high",
         "customer_phone": "high",
@@ -178,9 +210,13 @@ def test_unreadable_photo(db: Session, settings: Settings, pending: Inspection) 
     assert _run(db, settings, pending, FakeExtractor([unreadable])).extraction_status == ExtractionStatus.UNREADABLE
 
 
-def test_not_a_form_is_unreadable(db: Session, settings: Settings, pending: Inspection) -> None:
-    fake = FakeExtractor([good_result(is_inspection_form=False)])
-    assert _run(db, settings, pending, fake).extraction_status == ExtractionStatus.UNREADABLE
+def test_vehicle_is_the_fallback_service_text(db: Session, settings: Settings, pending: Inspection) -> None:
+    result = good_result(
+        service_description={"value": None},
+        other_fields={"vehicle_brand": {"value": "Chevrolet"}, "vehicle_model": {"value": "Aveo"}},
+    )
+    done = _run(db, settings, pending, FakeExtractor([result]))
+    assert done.service_display == "tu Chevrolet Aveo" and done.service_description is None
 
 
 def test_model_failure_retries_then_falls_back_to_manual(db: Session, settings: Settings, pending: Inspection) -> None:

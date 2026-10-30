@@ -13,6 +13,29 @@
     return true;
   }
 
+  // --- Shrink photos before uploading -------------------------------------------------------
+  // Phone photos are often 3-8 MB; 1600 px keeps the handwriting sharp for zooming and uploads
+  // far faster on mobile data. Falls back to the original file if anything is unsupported.
+  var UPLOAD_MAX_SIDE = 1600;
+
+  function shrinkPhoto(file) {
+    if (!window.createImageBitmap || !/^image\/(jpeg|png|webp)$/.test(file.type)) return Promise.resolve(file);
+    return createImageBitmap(file, { imageOrientation: "from-image" }).then(function (bitmap) {
+      var scale = Math.min(1, UPLOAD_MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+      if (scale === 1 && file.size < 1500000) { bitmap.close(); return file; }
+      var canvas = document.createElement("canvas");
+      canvas.width = Math.round(bitmap.width * scale);
+      canvas.height = Math.round(bitmap.height * scale);
+      canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close();
+      return new Promise(function (resolve) {
+        canvas.toBlob(function (blob) {
+          resolve(blob && blob.size < file.size ? new File([blob], "foto.jpg", { type: "image/jpeg" }) : file);
+        }, "image/jpeg", 0.85);
+      });
+    }).catch(function () { return file; });
+  }
+
   // --- Upload forms with a progress bar ---------------------------------------------------
   function initUpload(form) {
     var input = form.querySelector('input[type="file"]');
@@ -27,10 +50,23 @@
       if (!window.FormData || !input.files.length) return;  // let the browser handle it
       event.preventDefault();
       error.textContent = "";
-      if (maxBytes && input.files[0].size > maxBytes) {
-        error.textContent = "La foto supera el tamaño máximo (" + Math.round(maxBytes / 1048576) + " MB).";
-        return;
-      }
+      box.hidden = false;
+      bar.removeAttribute("value");  // indeterminate while preparing
+      label.textContent = "Preparando foto…";
+      button.disabled = true;
+      shrinkPhoto(input.files[0]).then(function (photo) {
+        if (maxBytes && photo.size > maxBytes) {
+          reset();
+          error.textContent = "La foto supera el tamaño máximo (" + Math.round(maxBytes / 1048576) + " MB).";
+          return;
+        }
+        send(photo);
+      });
+    });
+
+    function send(photo) {
+      var data = new FormData(form);
+      data.set(input.name, photo, photo.name || "foto.jpg");
       var xhr = new XMLHttpRequest();
       xhr.open("POST", form.action);
       xhr.upload.onprogress = function (e) {
@@ -53,12 +89,10 @@
         reset();
         error.textContent = "Sin conexión. Comprueba la red e inténtalo de nuevo.";
       };
-      box.hidden = false;
       bar.value = 0;
       label.textContent = "Subiendo foto… 0 %";
-      button.disabled = true;
-      xhr.send(new FormData(form));
-    });
+      xhr.send(data);
+    }
 
     function reset() {
       box.hidden = true;

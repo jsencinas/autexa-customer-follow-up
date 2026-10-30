@@ -1,9 +1,10 @@
 # All customer-facing text. Edit or translate here without touching code.
-# Default language: Spanish.
+# Default language: Spanish (Mexico).
 
 # Pre-approved WhatsApp templates (business-initiated first message).
 # Register each one in WhatsApp Manager with EXACTLY this text and buttons (see README).
-# {{1}} = customer first name, {{2}} = service as shown to the customer.
+# {{1}} = customer first name, {{2}} = service as shown to the customer
+# (e.g. "el cambio de aceite", or "tu Chevrolet Aveo" when no service was written on the form).
 # `buttons` lists the quick-reply buttons in order; the bot attaches a payload to each.
 survey_templates:
   - name: encuesta_satisfaccion_v1
@@ -20,7 +21,7 @@ survey_templates:
     buttons: [good, okay, bad, opt_out]
   - name: encuesta_satisfaccion_v4
     language: es
-    text: "Hola {{1}} 👋 Esperamos que todo vaya bien después de {{2}}. ¿Cómo lo valorarías?"
+    text: "Hola {{1}} 👋 Esperamos que todo vaya bien con {{2}}. ¿Cómo valorarías nuestro servicio?"
     buttons: [good, okay, bad, opt_out]
 
 # Button labels to register with the templates (same order as `buttons`).
@@ -50,9 +51,9 @@ opt_out_confirmation:
 # Phrases recognised without the LLM (compared after lowercasing and removing accents/punctuation).
 # A message that is exactly one of these is a rating.
 rating_phrases:
-  good: ["bien", "muy bien", "genial", "perfecto", "excelente", "estupendo", "todo bien", "bueno", "👍", "5", "4"]
+  good: ["bien", "muy bien", "genial", "perfecto", "excelente", "estupendo", "todo bien", "bueno", "chido", "muy padre", "de lujo", "👍", "5", "4"]
   okay: ["regular", "normal", "mas o menos", "aceptable", "3"]
-  bad: ["mal", "muy mal", "fatal", "horrible", "malo", "👎", "1", "2"]
+  bad: ["mal", "muy mal", "fatal", "horrible", "malo", "pesimo", "👎", "1", "2"]
 
 # A message containing one of these is an opt-out (the safe direction: better to stop than to keep messaging).
 opt_out_phrases:
@@ -70,3 +71,11 @@ opt_out_phrases:
   - "dejen de escribirme"
   - "no molestar"
   - "no me molesteis"
+  - "ya no me manden"
+  - "no me manden"
+  - "ya no me envien"
+  - "no me envien"
+  - "ya no me escriban"
+  - "no me escriban"
+  - "dejen de mandarme"
+  - "ya no quiero mensajes"

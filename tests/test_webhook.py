@@ -113,4 +113,5 @@ def test_delivered_status_changes_nothing(db: Session) -> None:
 
 def test_to_e164() -> None:
     assert inbound.to_e164("34612345678") == "+34612345678"
+    assert inbound.to_e164("5215580231722") == "+525580231722"  # Mexican mobiles arrive as 521...
     assert inbound._timestamp("bad", datetime(2026, 1, 1, tzinfo=UTC)) == datetime(2026, 1, 1, tzinfo=UTC)

@@ -26,6 +26,9 @@ def settings(tmp_path: Path) -> Settings:
         whatsapp_verify_token="verify-token",
         whatsapp_access_token="token",
         whatsapp_phone_number_id="123",
+        # Most tests were written with Spanish numbers and Madrid time; Mexico has its own tests.
+        default_country_code="ES",
+        business_timezone="Europe/Madrid",
         _env_file=None,  # type: ignore[call-arg]
     )
 
