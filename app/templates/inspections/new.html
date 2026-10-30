@@ -5,10 +5,15 @@
   <h1>Nueva inspección</h1>
   <p class="muted">Haz una foto de la hoja de inspección inicial completa, con buena luz y sin cortar los bordes.</p>
   {% if error %}<p class="error">{{ error }}</p>{% endif %}
-  <form method="post" action="/inspections/new" enctype="multipart/form-data">
+  <form method="post" action="/inspections/new" enctype="multipart/form-data" data-upload data-max-bytes="{{ max_bytes }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label for="photo">Foto de la hoja</label>
     <input id="photo" name="photo" type="file" accept="image/*" capture="environment" required>
+    <div class="upload-progress" hidden>
+      <progress max="100" value="0"></progress>
+      <span class="upload-label muted"></span>
+    </div>
+    <p class="upload-error error" role="alert"></p>
     <button class="primary" type="submit">Enviar</button>
   </form>
 </div>

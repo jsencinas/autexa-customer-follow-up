@@ -108,3 +108,26 @@ def test_upload_rejects_non_images(employee_client: TestClient) -> None:
 
 def test_upload_requires_login(client: TestClient) -> None:
     assert client.get("/inspections/new", follow_redirects=False).status_code == 303
+
+
+def test_upload_form_has_progress_bar(employee_client: TestClient) -> None:
+    page = employee_client.get("/inspections/new").text
+    assert "data-upload" in page and "<progress" in page and 'data-max-bytes="10485760"' in page
+    assert '<script src="/static/app.js"' in page
+    assert employee_client.get("/static/app.js").status_code == 200
+
+
+def test_status_endpoint_signature_changes(employee_client: TestClient, db: Session, settings: Settings) -> None:
+    inspection = inspections.create_from_upload(db, settings, JPEG, user_id=None)
+    health.beat(db)
+    page = employee_client.get(f"/inspections/{inspection.id}/confirm").text
+    assert f'data-status-url="/inspections/{inspection.id}/status"' in page
+    assert 'http-equiv="refresh"' not in page
+    first = employee_client.get(f"/inspections/{inspection.id}/status").json()
+    assert first["extraction_status"] == "pending" and first["worker_alive"] is True
+    assert f'data-signature="{first["signature"]}"' in page
+    inspection.extraction_status = ExtractionStatus.DONE
+    db.commit()
+    assert employee_client.get(f"/inspections/{inspection.id}/status").json()["signature"] != first["signature"]
+    # Once finished, the page no longer polls.
+    assert "data-status-url" not in employee_client.get(f"/inspections/{inspection.id}/confirm").text

@@ -21,10 +21,16 @@ def _read_upload(file: UploadFile, settings: Settings) -> bytes:
     return file.file.read(settings.max_upload_mb * 1024 * 1024 + 1)
 
 
+def _max_bytes(settings: Settings) -> int:
+    return settings.max_upload_mb * 1024 * 1024
+
+
 @router.get("/new", response_class=HTMLResponse)
-def new_page(request: Request, user: CurrentUser = Depends(current_user)) -> HTMLResponse:
+def new_page(
+    request: Request, user: CurrentUser = Depends(current_user), settings: Settings = Depends(get_settings)
+) -> HTMLResponse:
     """Upload form (opens the camera on phones)."""
-    return render(request, "inspections/new.html", user=user)
+    return render(request, "inspections/new.html", {"max_bytes": _max_bytes(settings)}, user=user)
 
 
 @router.post("/new", dependencies=[Depends(verify_csrf)], response_model=None)
@@ -39,7 +45,8 @@ def upload(
     try:
         inspection = inspections.create_from_upload(db, settings, _read_upload(photo, settings), user.id)
     except InvalidImage as exc:
-        return render(request, "inspections/new.html", {"error": str(exc)}, user=user, status_code=400)
+        ctx = {"error": str(exc), "max_bytes": _max_bytes(settings)}
+        return render(request, "inspections/new.html", ctx, user=user, status_code=400)
     return RedirectResponse(f"/inspections/{inspection.id}/confirm", status_code=303)
 
 
@@ -80,13 +87,16 @@ def _review_context(
     db: Session, settings: Settings, inspection: Inspection, manual: bool = False, **extra: object
 ) -> dict[str, object]:
     duplicate_of = db.get(Inspection, inspection.duplicate_of_id) if inspection.duplicate_of_id else None
+    worker_alive = health.worker_alive(db)
     return {
         "inspection": inspection,
         "manual": manual,
         "duplicate_of": duplicate_of,
         "opted_out": opt_out.is_opted_out(db, inspection.customer_phone),
-        "worker_alive": health.worker_alive(db),
+        "worker_alive": worker_alive,
         "max_attempts": settings.max_extraction_attempts,
+        "max_bytes": _max_bytes(settings),
+        "signature": inspections.progress(inspection, worker_alive)["signature"],
         "errors": {},
         **extra,
     }
@@ -111,6 +121,14 @@ def confirm_page(
     """Review page: processing notice, unreadable/failed fallbacks, or the editable form."""
     inspection = _load(db, inspection_id)
     return render(request, "inspections/confirm.html", _review_context(db, settings, inspection, manual), user=user)
+
+
+@router.get("/{inspection_id}/status")
+def status(
+    inspection_id: int, _user: CurrentUser = Depends(current_user), db: Session = Depends(get_db)
+) -> dict[str, object]:
+    """Small JSON polled by the review page while the photo is being read."""
+    return inspections.progress(_load(db, inspection_id), health.worker_alive(db))
 
 
 @router.post("/{inspection_id}/confirm", dependencies=[Depends(verify_csrf)], response_model=None)

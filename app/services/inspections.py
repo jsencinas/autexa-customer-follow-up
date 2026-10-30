@@ -88,3 +88,15 @@ def list_by_status(db: Session, status: InspectionStatus | None, limit: int = 20
     if status is not None:
         query = query.where(Inspection.status == status)
     return list(db.scalars(query))
+
+
+def progress(inspection: Inspection, worker_alive: bool) -> dict[str, object]:
+    """What the review page shows while waiting; `signature` changes whenever that display should change."""
+    data: dict[str, object] = {
+        "status": inspection.status,
+        "extraction_status": inspection.extraction_status,
+        "attempts": inspection.extraction_attempts,
+        "worker_alive": worker_alive,
+    }
+    data["signature"] = "|".join(str(v) for v in data.values())
+    return data

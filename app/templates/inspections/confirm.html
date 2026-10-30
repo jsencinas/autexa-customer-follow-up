@@ -3,15 +3,12 @@
 {% set processing = i.extraction_status in ("pending", "processing") %}
 {% set editable = i.status == "pending_confirmation" and (not processing or manual or errors) %}
 {% block title %}Inspección #{{ i.id }}{% endblock %}
-{% block head %}
-{% if processing and i.status == "pending_confirmation" and not manual %}<meta http-equiv="refresh" content="3">{% endif %}
-{% endblock %}
 {% macro field_class(name) -%}
 {%- if errors.get(name) or (i.field_confidence or {}).get(name) == "invalid" %}field-error
 {%- elif (i.field_confidence or {}).get(name) in ("low", "missing") %}field-warn{% endif -%}
 {%- endmacro %}
 {% block content %}
-<div class="card">
+<div class="card"{% if processing and i.status == "pending_confirmation" and not manual %} data-status-url="/inspections/{{ i.id }}/status" data-signature="{{ signature }}"{% endif %}>
   <h1>Inspección #{{ i.id }} <span class="badge">{{ i.status | status_label }}</span></h1>
   {% if error %}<p class="error">{{ error }}</p>{% endif %}
 
@@ -33,7 +30,7 @@
       Si sigue fallando, podrás introducir los datos a mano.
     </div>
     {% else %}
-    <p>Leyendo la foto… esta página se actualiza sola.</p>
+    <p>Leyendo la foto… se mostrará aquí en cuanto termine.</p>
     {% endif %}
     <a class="button" href="/inspections/{{ i.id }}/confirm?manual=1">Introducir los datos a mano</a>
   {% elif i.status == "pending_confirmation" and i.extraction_status == "unreadable" %}
@@ -63,10 +60,15 @@
     <a href="/inspections/{{ i.id }}/image" target="_blank" rel="noopener"><img src="/inspections/{{ i.id }}/image" alt="Foto de la hoja"></a>
     <p class="muted">Toca la foto para verla en grande.</p>
     {% if i.status == "pending_confirmation" %}
-    <form method="post" action="/inspections/{{ i.id }}/retake" enctype="multipart/form-data">
+    <form method="post" action="/inspections/{{ i.id }}/retake" enctype="multipart/form-data" data-upload data-max-bytes="{{ max_bytes }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label for="photo">Repetir foto</label>
       <input id="photo" name="photo" type="file" accept="image/*" capture="environment" required>
+      <div class="upload-progress" hidden>
+      <progress max="100" value="0"></progress>
+      <span class="upload-label muted"></span>
+    </div>
+    <p class="upload-error error" role="alert"></p>
       <button type="submit">Subir nueva foto</button>
     </form>
     {% endif %}
@@ -120,22 +122,4 @@
   </div>
   {% endif %}
 </div>
-{% endblock %}
-{% block scripts %}
-<script>
-  // Confirm stays disabled until the required fields look valid; the server validates again.
-  (function () {
-    var btn = document.getElementById("confirm-btn");
-    if (!btn) return;
-    var name = document.getElementById("customer_name");
-    var phone = document.getElementById("customer_phone");
-    function check() {
-      var digits = (phone.value.match(/\d/g) || []).length;
-      btn.disabled = !(name.value.trim() && digits >= 9);
-    }
-    name.addEventListener("input", check);
-    phone.addEventListener("input", check);
-    check();
-  })();
-</script>
 {% endblock %}
