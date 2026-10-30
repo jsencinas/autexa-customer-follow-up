@@ -22,7 +22,19 @@
       (estado: <strong>{{ duplicate_of.status | status_label }}</strong>). No se ha creado ni programado nada nuevo.
     </div>
   {% elif i.status == "pending_confirmation" and processing and not manual %}
+    {% if not worker_alive %}
+    <div class="notice">
+      <strong>El procesador en segundo plano (worker) no está en marcha</strong>, así que nadie está leyendo la foto.
+      Arráncalo con <code>uv run python -m app.worker</code> o introduce los datos a mano.
+    </div>
+    {% elif i.extraction_attempts %}
+    <div class="notice">
+      El modelo de lectura no responde (¿está Ollama en marcha?). Reintentando: intento {{ i.extraction_attempts + 1 }} de {{ max_attempts }}.
+      Si sigue fallando, podrás introducir los datos a mano.
+    </div>
+    {% else %}
     <p>Leyendo la foto… esta página se actualiza sola.</p>
+    {% endif %}
     <a class="button" href="/inspections/{{ i.id }}/confirm?manual=1">Introducir los datos a mano</a>
   {% elif i.status == "pending_confirmation" and i.extraction_status == "unreadable" %}
     <div class="notice">

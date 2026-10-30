@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
-from app.services import extraction, inspections, reply_interpretation, reports, scheduler
+from app.services import extraction, health, inspections, reply_interpretation, reports, scheduler
 from app.services.reports import Mailer
 from app.services.extraction import Extractor
 from app.services.messages import Messages
@@ -63,6 +63,7 @@ class Worker:
     def run_once(self, now: datetime | None = None) -> None:
         """Run every job that is due at `now`."""
         now = now or utcnow()
+        self._job("heartbeat", health.beat, now)
         self._job("extraction", self.run_extractions, now)
         self._job("replies", self.interpret_replies, now)
         if self._due("surveys", SURVEY_INTERVAL, now):

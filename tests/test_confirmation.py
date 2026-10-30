@@ -8,7 +8,7 @@ from app.config import Settings
 from app.integrations.ollama import OllamaUnavailable
 from app.models.db_models import Inspection, OptOut
 from app.models.enums import ExtractionStatus, InspectionStatus
-from app.services import confirmation, extraction, inspections
+from app.services import confirmation, extraction, health, inspections
 from app.services.confirmation import ReviewForm
 from app.timeutils import utcnow
 from tests.conftest import csrf_from
@@ -154,7 +154,8 @@ def test_unreadable_page_offers_retake_and_manual(
     assert "/retake" in page and 'id="review"' in page
 
 
-def test_processing_page_offers_manual_entry(employee_client: TestClient, pending: Inspection) -> None:
+def test_processing_page_offers_manual_entry(employee_client: TestClient, db: Session, pending: Inspection) -> None:
+    health.beat(db)  # a running worker
     page = employee_client.get(f"/inspections/{pending.id}/confirm").text
     assert "Leyendo la foto" in page and "manual=1" in page and 'id="review"' not in page
     manual = employee_client.get(f"/inspections/{pending.id}/confirm?manual=1").text

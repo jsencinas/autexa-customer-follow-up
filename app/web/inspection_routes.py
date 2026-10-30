@@ -8,7 +8,7 @@ from app.config import Settings, get_settings
 from app.db import get_db
 from app.models.db_models import Inspection
 from app.models.enums import InspectionStatus
-from app.services import confirmation, inspections, opt_out
+from app.services import confirmation, health, inspections, opt_out
 from app.services.storage import InvalidImage
 from app.web.security import CurrentUser, current_user, verify_csrf
 from app.web.templating import render
@@ -77,7 +77,7 @@ def image(
 
 
 def _review_context(
-    db: Session, inspection: Inspection, manual: bool = False, **extra: object
+    db: Session, settings: Settings, inspection: Inspection, manual: bool = False, **extra: object
 ) -> dict[str, object]:
     duplicate_of = db.get(Inspection, inspection.duplicate_of_id) if inspection.duplicate_of_id else None
     return {
@@ -85,6 +85,8 @@ def _review_context(
         "manual": manual,
         "duplicate_of": duplicate_of,
         "opted_out": opt_out.is_opted_out(db, inspection.customer_phone),
+        "worker_alive": health.worker_alive(db),
+        "max_attempts": settings.max_extraction_attempts,
         "errors": {},
         **extra,
     }
@@ -104,10 +106,11 @@ def confirm_page(
     manual: bool = False,
     user: CurrentUser = Depends(current_user),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> HTMLResponse:
     """Review page: processing notice, unreadable/failed fallbacks, or the editable form."""
     inspection = _load(db, inspection_id)
-    return render(request, "inspections/confirm.html", _review_context(db, inspection, manual), user=user)
+    return render(request, "inspections/confirm.html", _review_context(db, settings, inspection, manual), user=user)
 
 
 @router.post("/{inspection_id}/confirm", dependencies=[Depends(verify_csrf)], response_model=None)
@@ -139,10 +142,10 @@ def confirm(
         else:
             result = confirmation.confirm(db, inspection_id, form, settings, user.id)
     except inspections.InvalidTransition as exc:
-        ctx = _review_context(db, _load(db, inspection_id), error=str(exc))
+        ctx = _review_context(db, settings, _load(db, inspection_id), error=str(exc))
         return render(request, "inspections/confirm.html", ctx, user=user, status_code=409)
     if result.errors and result.duplicate_of is None:
-        ctx = _review_context(db, result.inspection, manual=True, errors=result.errors)
+        ctx = _review_context(db, settings, result.inspection, manual=True, errors=result.errors)
         return render(request, "inspections/confirm.html", ctx, user=user, status_code=400)
     return RedirectResponse(f"/inspections/{inspection_id}/confirm", status_code=303)
 
@@ -153,13 +156,14 @@ def discard(
     inspection_id: int,
     user: CurrentUser = Depends(current_user),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> HTMLResponse | RedirectResponse:
     """Discard a pending inspection."""
     _load(db, inspection_id)
     try:
         confirmation.discard(db, inspection_id)
     except inspections.InvalidTransition as exc:
-        ctx = _review_context(db, _load(db, inspection_id), error=str(exc))
+        ctx = _review_context(db, settings, _load(db, inspection_id), error=str(exc))
         return render(request, "inspections/confirm.html", ctx, user=user, status_code=409)
     return RedirectResponse(f"/inspections/{inspection_id}/confirm", status_code=303)
 
@@ -179,6 +183,6 @@ def retake(
     except inspections.InspectionNotFound:
         raise HTTPException(404) from None
     except (InvalidImage, inspections.InvalidTransition) as exc:
-        ctx = _review_context(db, _load(db, inspection_id), error=str(exc))
+        ctx = _review_context(db, settings, _load(db, inspection_id), error=str(exc))
         return render(request, "inspections/confirm.html", ctx, user=user, status_code=400)
     return RedirectResponse(f"/inspections/{inspection.id}/confirm", status_code=303)

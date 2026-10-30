@@ -138,6 +138,10 @@ ollama pull qwen2.5vl:7b        # EXTRACTION_MODEL: reads the handwritten forms
 ollama pull qwen2.5:7b          # REPLY_MODEL: interprets free-text replies
 ```
 
+If Ollama was installed as a system service, start it with `sudo systemctl enable --now ollama`
+instead of `ollama serve`: the service keeps its models in its own folder, so a manual `ollama serve`
+started by your user will not see them (the extraction then fails with "model not found").
+
 Any Ollama model can be configured through `EXTRACTION_MODEL` / `REPLY_MODEL`. A GPU helps but is
 not required: both run in the background worker, never inside a web request. If Ollama is down,
 photos and replies wait and are retried. After repeated failures, photos fall back to manual entry
@@ -160,6 +164,9 @@ Two processes, both reading the same `.env`:
 uv run uvicorn main:app --host 127.0.0.1 --port 8000   # web app + webhook (put HTTPS in front)
 uv run python -m app.worker                             # background worker
 ```
+
+**Both must be running.** The web app only stores the photo; the worker is what reads it. If the
+worker is stopped, the review page says so instead of loading forever.
 
 The worker polls the database. Extraction and reply interpretation run every few seconds; due
 surveys, expirations and the monthly report are checked every minute; photo retention runs every

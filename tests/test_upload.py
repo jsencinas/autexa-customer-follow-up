@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.config import Settings
 from app.models.db_models import Inspection
 from app.models.enums import ExtractionStatus, InspectionStatus
-from app.services import inspections
+from app.services import health, inspections
 from app.services.storage import ImageStorage, InvalidImage, detect_image_type
 from tests.conftest import csrf_from
 
@@ -77,6 +77,7 @@ def test_list_by_status(db: Session, settings: Settings) -> None:
 
 
 def test_upload_page_flow(employee_client: TestClient, db: Session) -> None:
+    health.beat(db)  # a running worker
     page = employee_client.get("/inspections/new")
     assert 'capture="environment"' in page.text
     response = employee_client.post(
