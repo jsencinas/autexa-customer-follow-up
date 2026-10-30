@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
-from app.services import extraction, health, inspections, reply_interpretation, reports, scheduler
+from app.services import duplicates, extraction, health, inspections, reply_interpretation, reports, scheduler
 from app.services.reports import Mailer
 from app.services.extraction import Extractor
 from app.services.messages import Messages
@@ -131,6 +131,7 @@ class Worker:
     def run_forever(self) -> None:
         """Main loop."""
         logger.info("worker started")
+        self._job("backfill_dedup_keys", lambda db, _now: duplicates.backfill_keys(db) and None, utcnow())
         while True:
             self.run_once()
             self.deps.sleep(self.deps.settings.worker_tick_seconds)

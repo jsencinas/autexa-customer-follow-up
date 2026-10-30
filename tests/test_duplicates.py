@@ -111,3 +111,36 @@ def test_duplicate_after_extraction_is_discarded(db: Session, settings: Settings
     assert second.status == InspectionStatus.DISCARDED
     assert second.duplicate_of_id == first.id and second.dedup_key is None
     assert second.image_path is None
+
+
+def test_blank_service_on_both_is_still_a_duplicate(db: Session) -> None:
+    first = make(db, service_description=None)
+    assert duplicates.register(db, first) is None and first.dedup_key
+    second = make(db, service_description="  ")
+    assert duplicates.register(db, second).id == first.id  # type: ignore[union-attr]
+
+
+def test_blank_service_differs_from_written_service(db: Session) -> None:
+    duplicates.register(db, make(db, service_description=None))
+    assert duplicates.register(db, make(db)) is None
+
+
+def test_repeated_upload_of_form_without_service_is_discarded(db: Session, settings: Settings) -> None:
+    blank = good_result(service_description={"value": None})
+    first = inspections.create_from_upload(db, settings, JPEG, user_id=None)
+    second = inspections.create_from_upload(db, settings, JPEG, user_id=None)
+    fake = FakeExtractor([blank, blank])
+    for inspection_id in extraction.claim_due_extractions(db):
+        extraction.process_extraction(db, inspection_id, fake, inspections.storage_for(settings), settings)
+    db.refresh(second)
+    assert second.status == InspectionStatus.DISCARDED and second.duplicate_of_id == first.id
+
+
+def test_backfill_keys_reports_conflicts_without_discarding(db: Session) -> None:
+    first = make(db, status=InspectionStatus.SCHEDULED, service_description=None)
+    second = make(db, status=InspectionStatus.SCHEDULED, service_description=None)
+    other = make(db, status=InspectionStatus.SCHEDULED, customer_name="Otra Persona")
+    assert duplicates.backfill_keys(db) == [(second.id, first.id)]
+    db.refresh(second)
+    assert first.dedup_key and other.dedup_key and second.dedup_key is None
+    assert second.status == InspectionStatus.SCHEDULED  # left for a person to decide

@@ -20,10 +20,14 @@ logger = logging.getLogger(__name__)
 
 
 def key_for(name: str | None, phone: str | None, service: str | None, service_date: date | None) -> str | None:
-    """Hash of name, phone, service and date; None unless all four are present."""
-    if not (name and phone and service and service_date):
+    """Hash of name, phone, service and date; None unless name, phone and date are present.
+
+    An empty service is a value like any other: the service box is often left blank on the
+    paper form, and two uploads of the same blank form must still be caught.
+    """
+    if not (name and phone and service_date):
         return None
-    parts = (name_key(name), phone, service_key(service), service_date.isoformat())
+    parts = (name_key(name), phone, service_key(service or ""), service_date.isoformat())
     return hashlib.sha256("\x1f".join(parts).encode()).hexdigest()
 
 
@@ -79,3 +83,23 @@ def discard_as_duplicate(db: Session, inspection: Inspection, existing: Inspecti
     release(inspection)
     db.commit()
     logger.info("inspection %s is a duplicate of %s", inspection.id, existing.id)
+
+
+def backfill_keys(db: Session) -> list[tuple[int, int]]:
+    """Give a key to active inspections that lack one (e.g. after the key rules changed).
+
+    Conflicts are not resolved automatically, because those inspections may already be confirmed:
+    returns (inspection id, existing duplicate id) pairs for a person to review.
+    """
+    conflicts: list[tuple[int, int]] = []
+    rows = db.scalars(
+        select(Inspection)
+        .where(Inspection.dedup_key.is_(None), Inspection.status.in_([s.value for s in ACTIVE_STATUSES]))
+        .order_by(Inspection.id)
+    )
+    for inspection in list(rows):
+        existing = register(db, inspection)
+        if existing is not None:
+            conflicts.append((inspection.id, existing.id))
+            logger.warning("inspection %s duplicates %s; review it in the status window", inspection.id, existing.id)
+    return conflicts
