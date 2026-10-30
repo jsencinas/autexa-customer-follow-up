@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% set i = inspection %}
 {% set processing = i.extraction_status in ("pending", "processing") %}
-{% set editable = i.status == "pending_confirmation" and (not processing or manual or errors) %}
+{% set scheduled = i.status == "scheduled" and not i.send_claimed_at %}
+{% set editable = scheduled or (i.status == "pending_confirmation" and (not processing or manual or errors)) %}
+{% macro v(name, current) -%}{{ form[name] if form else (current or "") }}{%- endmacro %}
+{% macro local(dt) -%}{{ dt.astimezone(tz).strftime("%d/%m/%Y %H:%M") if dt else "—" }}{%- endmacro %}
 {% block title %}Inspección #{{ i.id }}{% endblock %}
 {% macro field_class(name) -%}
 {%- if errors.get(name) or (i.field_confidence or {}).get(name) == "invalid" %}field-error
@@ -44,7 +47,11 @@
   {% elif i.status == "pending_confirmation" %}
     <p class="muted">Revisa los datos. Los campos marcados en amarillo no se leyeron con seguridad; los rojos no son válidos.</p>
   {% elif i.status == "scheduled" %}
-    <p class="ok">Confirmada. Encuesta programada.</p>
+    <p class="ok">Confirmada. La encuesta se enviará a partir del {{ local(i.scheduled_at) }}, dentro del horario de envío.</p>
+    {% if scheduled %}<p class="muted">Hasta que se envíe puedes corregir los datos o cancelar la encuesta.</p>
+    {% else %}<p class="muted">La encuesta se está enviando ahora mismo; ya no se puede modificar.</p>{% endif %}
+  {% elif i.status in ("sent", "answered") %}
+    <p class="muted">Encuesta enviada el {{ local(i.sent_at) }}. Ya no se puede modificar.</p>
   {% elif i.status == "opted_out" %}
     <div class="notice">Este cliente se dio de baja de los mensajes automáticos. No se enviará encuesta.</div>
   {% endif %}
@@ -79,47 +86,58 @@
   <div class="card">
     <form id="review" method="post" action="/inspections/{{ i.id }}/confirm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      {% if errors.form %}<p class="error">{{ errors.form }}</p>{% endif %}
       <div class="{{ field_class('customer_name') }}">
         <label for="customer_name">Nombre del cliente *</label>
-        <input id="customer_name" name="customer_name" type="text" value="{{ i.customer_name or '' }}">
+        <input id="customer_name" name="customer_name" type="text" value="{{ v('customer_name', i.customer_name) }}">
         {% if errors.customer_name %}<p class="error">{{ errors.customer_name }}</p>{% endif %}
       </div>
       <div class="{{ field_class('customer_phone') }}">
         <label for="customer_phone">Teléfono *</label>
-        <input id="customer_phone" name="customer_phone" type="tel" value="{{ i.customer_phone or i.phone_raw or '' }}">
+        <input id="customer_phone" name="customer_phone" type="tel" value="{{ v('customer_phone', i.customer_phone or i.phone_raw) }}">
         {% if errors.customer_phone %}<p class="error">{{ errors.customer_phone }}</p>
         {% elif (i.field_confidence or {}).get("customer_phone") == "invalid" %}<p class="error">El teléfono leído no es válido. Corrígelo.</p>{% endif %}
       </div>
       <div class="{{ field_class('service_description') }}">
         <label for="service_description">Servicio</label>
-        <textarea id="service_description" name="service_description" rows="3">{{ i.service_description or '' }}</textarea>
+        <textarea id="service_description" name="service_description" rows="3">{{ v('service_description', i.service_description) }}</textarea>
       </div>
       <label for="service_display">Servicio tal como lo verá el cliente (máx. 60 caracteres)</label>
       <p class="muted">Ej.: «el cambio de aceite» o «tu Chevrolet Aveo». Aparece en «gracias por confiar en nosotros para …».</p>
-      <input id="service_display" name="service_display" type="text" maxlength="60" value="{{ i.service_display or '' }}">
+      <input id="service_display" name="service_display" type="text" maxlength="60" value="{{ v('service_display', i.service_display) }}">
       <div class="{{ field_class('date') }}">
         <label for="service_date">Fecha</label>
         <input id="service_date" name="service_date" type="text" placeholder="dd/mm/aaaa"
-               value="{{ i.service_date.strftime('%d/%m/%Y') if i.service_date else '' }}">
+               value="{{ v('service_date', i.service_date.strftime('%d/%m/%Y') if i.service_date else '') }}">
         {% if errors.service_date %}<p class="error">{{ errors.service_date }}</p>{% endif %}
       </div>
       {% if i.extra_fields %}
+      {% set labels = {"vehicle_brand": "Marca", "vehicle_model": "Modelo", "plates": "Placas"} %}
       <p class="muted">Otros datos leídos:
-        {% for k, v in i.extra_fields.items() %}<br>{{ k }}: {{ v }}{% endfor %}</p>
+        {% for key, value in i.extra_fields.items() %}<br>{{ labels.get(key, key) }}: {{ value }}{% endfor %}</p>
       {% endif %}
+      {% if scheduled %}
+      <button class="primary" type="submit" name="action" value="save">Guardar cambios</button>
+      {% else %}
       <button type="submit" name="action" value="save">Guardar cambios</button>
       <button id="confirm-btn" class="primary" type="submit" name="action" value="confirm">Confirmar</button>
+      {% endif %}
     </form>
-    <form method="post" action="/inspections/{{ i.id }}/discard" onsubmit="return confirm('¿Descartar esta inspección?')">
+    {% set what = "Cancelar encuesta" if scheduled else "Descartar" %}
+    <form method="post" action="/inspections/{{ i.id }}/discard"
+          onsubmit="return confirm('{{ '¿Cancelar la encuesta? No se enviará nada al cliente.' if scheduled else '¿Descartar esta inspección?' }}')">
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-      <button class="danger" type="submit">Descartar</button>
+      <button class="danger" type="submit">{{ what }}</button>
     </form>
   </div>
   {% elif i.status != "pending_confirmation" and not duplicate_of %}
   <div class="card">
     <p><strong>Cliente:</strong> {{ i.customer_name or "—" }}</p>
     <p><strong>Servicio:</strong> {{ i.service_display or i.service_description or "—" }}</p>
+    <p><strong>Teléfono:</strong> {{ i.customer_phone or "—" }}</p>
     <p><strong>Fecha:</strong> {{ i.service_date.strftime('%d/%m/%Y') if i.service_date else "—" }}</p>
+    {% if i.rating %}<p><strong>Valoración:</strong> {{ i.rating | rating_label }}</p>{% endif %}
+    {% if i.comment %}<p><strong>Comentario:</strong> {{ i.comment }}</p>{% endif %}
   </div>
   {% endif %}
 </div>

@@ -1,18 +1,39 @@
 {% extends "base.html" %}
-{% block title %}Inspecciones{% endblock %}
+{% block title %}Estado de inspecciones{% endblock %}
+{% macro local(dt) -%}{{ dt.astimezone(tz).strftime("%d/%m %H:%M") if dt else "—" }}{%- endmacro %}
 {% block content %}
+<div class="card" data-status-url="{{ live_url }}" data-signature="{{ signature }}">
+  <h1>Estado de inspecciones</h1>
+  <form class="filters" method="get" action="/inspections">
+    {% if status %}<input type="hidden" name="status" value="{{ status }}">{% endif %}
+    <div><label for="q">Buscar (nombre, teléfono o nº)</label><input id="q" name="q" type="text" value="{{ q }}"></div>
+    <div><button type="submit">Buscar</button></div>
+  </form>
+  <nav class="tabs" aria-label="Filtrar por estado">
+    <a href="{{ tab_urls[''] }}" {% if not status %}aria-current="page"{% endif %}>Todas <span class="count">{{ counts.values() | sum }}</span></a>
+    {% for s in statuses %}
+    <a href="{{ tab_urls[s.value] }}" {% if status == s %}aria-current="page"{% endif %}>{{ s.value | status_label }} <span class="count">{{ counts.get(s.value, 0) }}</span></a>
+    {% endfor %}
+  </nav>
+</div>
 <div class="card">
-  <h1>{{ "Pendientes de confirmar" if status == "pending_confirmation" else "Inspecciones" }}</h1>
-  {% if not items %}<p class="muted">No hay inspecciones.</p>{% endif %}
+  {% if not items %}<p class="muted">No hay inspecciones{% if q %} que coincidan con «{{ q }}»{% endif %}.</p>{% endif %}
   <div class="table-wrap">
-  <table>
+  <table class="stack">
+    {% if items %}<tr><th>Nº</th><th>Cliente</th><th>Servicio</th><th>Estado</th><th>Subida</th><th>Encuesta</th></tr>{% endif %}
     {% for i in items %}
     <tr>
-      <td><a href="/inspections/{{ i.id }}/confirm">#{{ i.id }}</a></td>
-      <td>{{ i.customer_name or "—" }}</td>
-      <td>{{ i.service_display or i.service_description or "—" }}</td>
-      <td><span class="badge">{{ i.status | status_label }}</span></td>
-      <td class="muted">{{ i.created_at.strftime("%d/%m %H:%M") }} UTC</td>
+      <td data-label="Nº"><a href="/inspections/{{ i.id }}/confirm">#{{ i.id }}</a></td>
+      <td data-label="Cliente"><div><a href="/inspections/{{ i.id }}/confirm">{{ i.customer_name or "—" }}</a><br><span class="muted">{{ i.customer_phone or "" }}</span></div></td>
+      <td data-label="Servicio">{{ i.service_display or i.service_description or "—" }}</td>
+      <td data-label="Estado"><div><span class="badge">{{ i.status | status_label }}</span>
+        {% if i.status == "pending_confirmation" and i.extraction_status in ("pending", "processing") %}<br><span class="muted">leyendo foto…</span>{% endif %}</div></td>
+      <td data-label="Subida" class="muted">{{ local(i.created_at) }}</td>
+      <td data-label="Encuesta" class="muted">
+        {% if i.status == "scheduled" %}desde {{ local(i.scheduled_at) }}
+        {% elif i.sent_at %}enviada {{ local(i.sent_at) }}{% if i.rating %}<br>{{ i.rating | rating_label }}{% endif %}
+        {% else %}—{% endif %}
+      </td>
     </tr>
     {% endfor %}
   </table>

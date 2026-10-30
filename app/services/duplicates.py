@@ -6,6 +6,7 @@ so two near-simultaneous submissions of the same form cannot both keep it.
 
 import hashlib
 import logging
+from datetime import date
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -18,22 +19,19 @@ from app.services.normalization import name_key, service_key
 logger = logging.getLogger(__name__)
 
 
-def compute_dedup_key(inspection: Inspection) -> str | None:
+def key_for(name: str | None, phone: str | None, service: str | None, service_date: date | None) -> str | None:
     """Hash of name, phone, service and date; None unless all four are present."""
-    if not (
-        inspection.customer_name
-        and inspection.customer_phone
-        and inspection.service_description
-        and inspection.service_date
-    ):
+    if not (name and phone and service and service_date):
         return None
-    parts = (
-        name_key(inspection.customer_name),
-        inspection.customer_phone,
-        service_key(inspection.service_description),
-        inspection.service_date.isoformat(),
-    )
+    parts = (name_key(name), phone, service_key(service), service_date.isoformat())
     return hashlib.sha256("\x1f".join(parts).encode()).hexdigest()
+
+
+def compute_dedup_key(inspection: Inspection) -> str | None:
+    """The dedup key of an inspection's current data."""
+    return key_for(
+        inspection.customer_name, inspection.customer_phone, inspection.service_description, inspection.service_date
+    )
 
 
 def find_active_duplicate(db: Session, key: str, exclude_id: int) -> Inspection | None:

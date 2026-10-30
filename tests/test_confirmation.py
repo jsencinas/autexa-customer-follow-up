@@ -172,3 +172,126 @@ def test_duplicate_page_mentions_original(
         extraction.process_extraction(db, inspection_id, fake, inspections.storage_for(settings), settings)
     page = employee_client.get(f"/inspections/{second.id}/confirm").text
     assert "ya estaba registrada" in page and f"#{first.id}" in page and "Pendiente de confirmar" in page
+
+
+# --- editing after confirmation ---------------------------------------------------
+
+
+@pytest.fixture
+def scheduled(db: Session, settings: Settings, pending: Inspection) -> Inspection:
+    return confirmation.confirm(db, pending.id, VALID, settings, None).inspection
+
+
+def test_scheduled_inspection_can_be_edited(db: Session, settings: Settings, scheduled: Inspection) -> None:
+    when = scheduled.scheduled_at
+    result = confirmation.save_edits(
+        db, scheduled.id, VALID.model_copy(update={"customer_name": "María López", "customer_phone": "699 111 222"}), settings
+    )
+    assert not result.errors
+    db.refresh(scheduled)
+    assert scheduled.customer_name == "María López" and scheduled.customer_phone == "+34699111222"
+    assert scheduled.status == InspectionStatus.SCHEDULED and scheduled.scheduled_at == when
+    assert scheduled.dedup_key  # recomputed for the new data
+
+
+def test_invalid_edit_of_scheduled_keeps_old_data(db: Session, settings: Settings, scheduled: Inspection) -> None:
+    result = confirmation.save_edits(db, scheduled.id, VALID.model_copy(update={"customer_phone": "123"}), settings)
+    assert "customer_phone" in result.errors
+    db.refresh(scheduled)
+    assert scheduled.customer_phone == "+34612345678"  # a scheduled survey never loses its valid phone
+
+
+def test_edit_that_matches_another_inspection_is_rejected(db: Session, settings: Settings, scheduled: Inspection) -> None:
+    other = inspections.create_from_upload(db, settings, JPEG, user_id=None)
+    other_form = VALID.model_copy(update={"customer_name": "Pedro"})
+    confirmation.confirm(db, other.id, other_form, settings, None)
+    result = confirmation.save_edits(db, scheduled.id, other_form, settings)
+    assert "form" in result.errors and f"#{other.id}" in result.errors["form"]
+    db.refresh(scheduled)
+    assert scheduled.customer_name == "María García" and scheduled.status == InspectionStatus.SCHEDULED
+
+
+def test_edit_to_opted_out_number_cancels_survey(db: Session, settings: Settings, scheduled: Inspection) -> None:
+    db.add(OptOut(phone="+34699111222", source="admin"))
+    db.commit()
+    result = confirmation.save_edits(db, scheduled.id, VALID.model_copy(update={"customer_phone": "699111222"}), settings)
+    assert result.opted_out
+    db.refresh(scheduled)
+    assert scheduled.status == InspectionStatus.OPTED_OUT and scheduled.dedup_key is None
+
+
+def test_cannot_edit_while_sending_or_after_sent(db: Session, settings: Settings, scheduled: Inspection) -> None:
+    scheduled.send_claimed_at = utcnow()  # the worker is sending it right now
+    db.commit()
+    with pytest.raises(inspections.InvalidTransition):
+        confirmation.save_edits(db, scheduled.id, VALID, settings)
+    with pytest.raises(inspections.InvalidTransition):
+        confirmation.discard(db, scheduled.id)
+    scheduled.send_claimed_at = None
+    scheduled.status = InspectionStatus.SENT
+    db.commit()
+    with pytest.raises(inspections.InvalidTransition):
+        confirmation.save_edits(db, scheduled.id, VALID, settings)
+
+
+def test_cancel_scheduled_survey(db: Session, settings: Settings, scheduled: Inspection) -> None:
+    cancelled = confirmation.discard(db, scheduled.id)
+    assert cancelled.status == InspectionStatus.DISCARDED and cancelled.dedup_key is None
+
+
+def test_review_page_for_scheduled_offers_edit_and_cancel(
+    employee_client: TestClient, db: Session, scheduled: Inspection
+) -> None:
+    page = employee_client.get(f"/inspections/{scheduled.id}/confirm").text
+    assert 'id="review"' in page and "Cancelar encuesta" in page and 'value="confirm"' not in page
+    response = employee_client.post(
+        f"/inspections/{scheduled.id}/confirm",
+        data={**VALID.model_dump(), "customer_name": "Otro Nombre", "action": "save", "csrf_token": csrf_from(page)},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    db.refresh(scheduled)
+    assert scheduled.customer_name == "Otro Nombre"
+    bad = employee_client.post(
+        f"/inspections/{scheduled.id}/confirm",
+        data={**VALID.model_dump(), "customer_phone": "12", "customer_name": "Typed", "action": "save",
+              "csrf_token": csrf_from(page)},
+    )
+    assert bad.status_code == 400 and 'value="Typed"' in bad.text  # what was typed is kept on screen
+
+
+def test_sent_inspection_is_read_only(employee_client: TestClient, db: Session, scheduled: Inspection) -> None:
+    scheduled.status = InspectionStatus.SENT
+    scheduled.sent_at = utcnow()
+    db.commit()
+    page = employee_client.get(f"/inspections/{scheduled.id}/confirm").text
+    assert 'id="review"' not in page and "Ya no se puede modificar" in page
+
+
+# --- status window ------------------------------------------------------------------
+
+
+def test_status_window_lists_all_with_counts_and_search(
+    employee_client: TestClient, db: Session, settings: Settings, scheduled: Inspection
+) -> None:
+    inspections.create_from_upload(db, settings, JPEG, user_id=None)
+    page = employee_client.get("/inspections").text
+    assert "Estado de inspecciones" in page and "María García" in page
+    assert "Encuesta programada <span class=\"count\">1</span>" in page
+    assert "Pendiente de confirmar <span class=\"count\">1</span>" in page
+    only_scheduled = employee_client.get("/inspections", params={"status": "scheduled"}).text
+    assert only_scheduled.count("/confirm\">#") == 1
+    assert "María" in employee_client.get("/inspections", params={"q": "345678"}).text
+    assert "No hay inspecciones" in employee_client.get("/inspections", params={"q": "zzz"}).text
+    assert employee_client.get("/inspections", params={"status": "bogus"}).status_code == 400
+
+
+def test_status_window_live_signature_changes(
+    employee_client: TestClient, db: Session, settings: Settings, scheduled: Inspection
+) -> None:
+    page = employee_client.get("/inspections").text
+    assert 'data-status-url="/inspections/live"' in page
+    before = employee_client.get("/inspections/live").json()["signature"]
+    assert f'data-signature="{before}"' in page
+    inspections.create_from_upload(db, settings, JPEG, user_id=None)
+    assert employee_client.get("/inspections/live").json()["signature"] != before

@@ -1,4 +1,6 @@
-"""Employee pages: upload a photo, review and confirm the extracted data."""
+"""Employee pages: upload a photo, review and confirm the extracted data, and the status window."""
+
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -8,7 +10,7 @@ from app.config import Settings, get_settings
 from app.db import get_db
 from app.models.db_models import Inspection
 from app.models.enums import InspectionStatus
-from app.services import confirmation, health, inspections, opt_out
+from app.services import admin_settings, confirmation, health, inspections, opt_out
 from app.services.storage import InvalidImage
 from app.web.security import CurrentUser, current_user, verify_csrf
 from app.web.templating import render
@@ -50,16 +52,53 @@ def upload(
     return RedirectResponse(f"/inspections/{inspection.id}/confirm", status_code=303)
 
 
+def _status_filter(status: str | None) -> InspectionStatus | None:
+    if not status:
+        return None
+    try:
+        return InspectionStatus(status)
+    except ValueError:
+        raise HTTPException(400, "Estado no válido") from None
+
+
 @router.get("", response_class=HTMLResponse)
 def list_page(
     request: Request,
-    status: InspectionStatus | None = None,
+    status: str | None = None,
+    q: str | None = None,
     user: CurrentUser = Depends(current_user),
     db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
 ) -> HTMLResponse:
-    """List inspections, e.g. the ones still waiting for confirmation."""
-    items = inspections.list_by_status(db, status)
-    return render(request, "inspections/list.html", {"items": items, "status": status}, user=user)
+    """Status window: every inspection, filterable by status and searchable; updates itself."""
+    selected = _status_filter(status)
+    def url(path: str, status_value: str | None) -> str:
+        query = urlencode({k: v for k, v in (("status", status_value), ("q", q)) if v})
+        return f"{path}?{query}" if query else path
+
+    ctx = {
+        "items": inspections.list_by_status(db, selected, search=q),
+        "status": selected,
+        "q": q or "",
+        "counts": inspections.count_by_status(db, q),
+        "statuses": list(InspectionStatus),
+        "tz": admin_settings.get_sending_hours(db, settings).tz,
+        "live_url": url("/inspections/live", status),
+        "tab_urls": {"": url("/inspections", None), **{s.value: url("/inspections", s.value) for s in InspectionStatus}},
+        "signature": inspections.list_signature(db, selected, q),
+    }
+    return render(request, "inspections/list.html", ctx, user=user)
+
+
+@router.get("/live")
+def list_live(
+    status: str | None = None,
+    q: str | None = None,
+    _user: CurrentUser = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    """Polled by the status window; the signature changes when the list should be redrawn."""
+    return {"signature": inspections.list_signature(db, _status_filter(status), q)}
 
 
 @router.get("/{inspection_id}/image")
@@ -97,6 +136,7 @@ def _review_context(
         "max_attempts": settings.max_extraction_attempts,
         "max_bytes": _max_bytes(settings),
         "signature": inspections.progress(inspection, worker_alive)["signature"],
+        "tz": admin_settings.get_sending_hours(db, settings).tz,
         "errors": {},
         **extra,
     }
@@ -163,7 +203,8 @@ def confirm(
         ctx = _review_context(db, settings, _load(db, inspection_id), error=str(exc))
         return render(request, "inspections/confirm.html", ctx, user=user, status_code=409)
     if result.errors and result.duplicate_of is None:
-        ctx = _review_context(db, settings, result.inspection, manual=True, errors=result.errors)
+        db.refresh(result.inspection)
+        ctx = _review_context(db, settings, result.inspection, manual=True, errors=result.errors, form=form)
         return render(request, "inspections/confirm.html", ctx, user=user, status_code=400)
     return RedirectResponse(f"/inspections/{inspection_id}/confirm", status_code=303)
 

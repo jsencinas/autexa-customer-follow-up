@@ -184,8 +184,8 @@ hour. All state is in the database, so either process can be restarted at any ti
 | Page | Who | Purpose |
 |---|---|---|
 | `/inspections/new` | employees | Photograph/upload a form |
-| `/inspections/{id}/confirm` | employees | Review, correct, confirm or discard; retake photo; manual entry |
-| `/inspections?status=pending_confirmation` | employees | Unfinished inspections |
+| `/inspections/{id}/confirm` | employees | Review, correct, confirm or discard; retake photo; manual entry. After confirming, data can still be corrected (or the survey cancelled) until the survey is sent |
+| `/inspections` | employees | Status window: every inspection by status, with search; updates itself |
 | `/admin` | admin | Live dashboard (refreshes every 30 s), CSV download |
 | `/admin/review` | admin | Replies the bot was unsure about |
 | `/admin/opt-outs` | admin | Opt-out list (removal requires a reason) |

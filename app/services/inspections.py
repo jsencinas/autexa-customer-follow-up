@@ -1,9 +1,10 @@
 """Creating and listing inspections from uploaded photos."""
 
+import hashlib
 import logging
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings
@@ -82,12 +83,46 @@ def replace_image(
     return inspection
 
 
-def list_by_status(db: Session, status: InspectionStatus | None, limit: int = 200) -> list[Inspection]:
-    """Most recent inspections, optionally filtered by status."""
-    query = select(Inspection).order_by(Inspection.created_at.desc()).limit(limit)
+def _filtered(status: InspectionStatus | None, search: str | None):  # type: ignore[no-untyped-def]
+    query = select(Inspection)
     if status is not None:
         query = query.where(Inspection.status == status)
+    term = (search or "").strip()
+    if term:
+        conditions = [Inspection.customer_name.ilike(f"%{term}%")]
+        digits = "".join(ch for ch in term if ch.isdigit())
+        if digits:
+            conditions.append(Inspection.customer_phone.like(f"%{digits}%"))
+        if term.lstrip("#").isdigit():
+            conditions.append(Inspection.id == int(term.lstrip("#")))
+        query = query.where(or_(*conditions))
+    return query
+
+
+def list_by_status(
+    db: Session, status: InspectionStatus | None, limit: int = 200, search: str | None = None
+) -> list[Inspection]:
+    """Most recent inspections, optionally filtered by status and a name/phone/number search."""
+    query = _filtered(status, search).order_by(Inspection.created_at.desc(), Inspection.id.desc()).limit(limit)
     return list(db.scalars(query))
+
+
+def count_by_status(db: Session, search: str | None = None) -> dict[str, int]:
+    """Number of inspections per status (for the status tabs)."""
+    query = _filtered(None, search).with_only_columns(Inspection.status, func.count(Inspection.id)).group_by(
+        Inspection.status
+    )
+    return {status: count for status, count in db.execute(query)}
+
+
+def list_signature(db: Session, status: InspectionStatus | None, search: str | None = None) -> str:
+    """Changes whenever an inspection in the list is added or modified (used for live updates)."""
+    query = _filtered(status, search).with_only_columns(
+        func.count(Inspection.id), func.max(Inspection.updated_at), func.max(Inspection.id)
+    )
+    count, last_update, last_id = db.execute(query).one()
+    totals = sorted(count_by_status(db, search).items())
+    return hashlib.sha1(f"{count}|{last_update}|{last_id}|{totals}".encode()).hexdigest()[:16]
 
 
 def progress(inspection: Inspection, worker_alive: bool) -> dict[str, object]:
