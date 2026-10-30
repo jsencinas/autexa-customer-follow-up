@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerifyMismatchError
-from sqlalchemy import func, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.db_models import LoginAttempt, User
@@ -99,6 +99,20 @@ def authenticate(
     db.commit()
     if not ok or user is None:
         raise InvalidCredentials
+    return user
+
+
+def set_password(db: Session, username: str, password: str) -> User:
+    """Replace a user's password and clear their failed login attempts."""
+    username = username.strip().lower()
+    user = db.scalar(select(User).where(User.username == username))
+    if user is None:
+        raise UserError("Ese usuario no existe.")
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise UserError(f"La contraseña debe tener al menos {MIN_PASSWORD_LENGTH} caracteres.")
+    user.password_hash = hash_password(password)
+    db.execute(delete(LoginAttempt).where(LoginAttempt.username == username, LoginAttempt.success.is_(False)))
+    db.commit()
     return user
 
 

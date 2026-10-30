@@ -109,3 +109,25 @@ def test_cli_create_user(settings, monkeypatch: pytest.MonkeyPatch, db: Session)
     monkeypatch.setattr("getpass.getpass", lambda _prompt="": "longenough")
     assert cli_main(["create-user", "--username", "boss", "--role", "admin"]) == 0
     assert auth.authenticate(db, "boss", "longenough", "ip", max_attempts=5, lockout_minutes=15).role == "admin"
+
+
+def test_set_password_replaces_hash_and_clears_lockout(db: Session) -> None:
+    auth.create_user(db, "ana", "longenough")
+    for _ in range(3):
+        with pytest.raises(auth.InvalidCredentials):
+            auth.authenticate(db, "ana", "nope", "ip", max_attempts=3, lockout_minutes=15)
+    auth.set_password(db, "ANA", "brand-new-pass")
+    assert auth.authenticate(db, "ana", "brand-new-pass", "ip", max_attempts=3, lockout_minutes=15)
+    with pytest.raises(auth.UserError):
+        auth.set_password(db, "ana", "short")
+    with pytest.raises(auth.UserError):
+        auth.set_password(db, "nobody", "longenough")
+
+
+def test_cli_set_password(settings, monkeypatch: pytest.MonkeyPatch, db: Session) -> None:  # type: ignore[no-untyped-def]
+    auth.create_user(db, "boss", "old-password", Role.ADMIN)
+    monkeypatch.setenv("DATABASE_URL", settings.database_url)
+    monkeypatch.setattr("getpass.getpass", lambda _prompt="": "new-password")
+    assert cli_main(["set-password", "--username", "boss"]) == 0
+    assert auth.authenticate(db, "boss", "new-password", "ip", max_attempts=5, lockout_minutes=15)
+    assert cli_main(["set-password", "--username", "ghost"]) == 1

@@ -37,6 +37,7 @@ as soon as an employee joins it (except for opt-out detection).
 uv sync                      # creates .venv with Python 3.12 and all dependencies
 cp .env.example .env         # then fill in the values (see below)
 uv run python -m app.cli create-user --username jefe --role admin   # first admin (asks for a password)
+uv run python -m app.cli set-password --username jefe               # reset a forgotten password
 ```
 
 Employees' accounts are created afterwards by the admin at **Usuarios** (`/admin/users`), or with
