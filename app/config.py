@@ -4,7 +4,7 @@ from datetime import time
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 WEEKDAYS: tuple[str, ...] = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
@@ -100,5 +100,14 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    """Return the cached settings instance."""
-    return Settings()  # type: ignore[call-arg]
+    """Return the cached settings instance; exits with a readable message if the configuration is invalid."""
+    try:
+        return Settings()  # type: ignore[call-arg]
+    except ValidationError as exc:
+        problems = "\n".join(
+            f"  - {str(err['loc'][0]).upper()}: {'missing' if err['type'] == 'missing' else err['msg']}"
+            for err in exc.errors()
+        )
+        raise SystemExit(
+            f"Invalid configuration:\n{problems}\nCopy .env.example to .env and fill it in (see README)."
+        ) from None

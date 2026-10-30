@@ -33,3 +33,14 @@ def test_ensure_utc() -> None:
     assert ensure_utc(naive).tzinfo is UTC
     madrid = datetime(2026, 1, 1, 13, 0, tzinfo=timezone(timedelta(hours=1)))
     assert ensure_utc(madrid) == datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+
+
+def test_missing_config_gives_readable_error(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:  # type: ignore[no-untyped-def]
+    from app.config import get_settings
+
+    monkeypatch.chdir(tmp_path)  # no .env here
+    monkeypatch.delenv("APP_SECRET_KEY", raising=False)
+    get_settings.cache_clear()
+    with pytest.raises(SystemExit) as info:
+        get_settings()
+    assert "APP_SECRET_KEY: missing" in str(info.value)
